@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { studentLogin, teacherLogin, studentAuthSignIn, studentAuthSignUp, getAllStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
+import { studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, getAllStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -879,19 +879,17 @@ export default function App() {
   };
 
   const handleTeacherLogin = async () => {
-    const code = document.getElementById('tc')?.value?.trim();
-    if (!code) {
-      setLoginError('Please enter a teacher code');
-      return;
-    }
+    if (!email) { setLoginError('Enter email'); return; }
+    if (!password) { setLoginError('Enter password'); return; }
+    if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
     
     try {
       setLoginLoading(true);
       setLoginError('');
-      await teacherLogin(code);
+      await teacherAuthSignIn(email.toLowerCase(), password);
       setView('tutor_dashboard');
     } catch (error) {
-      setLoginError(error.message || 'Invalid teacher code');
+      setLoginError(error.message || 'Email login failed');
       console.error('Teacher login error:', error);
     } finally {
       setLoginLoading(false);
@@ -1017,7 +1015,7 @@ export default function App() {
         <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
             <div className="mb-12 text-center">
                <h2 className="text-3xl font-black text-white mb-2 uppercase tracking-tighter">Tutor Portal</h2>
-               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Code Access Only</p>
+               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Email Access</p>
             </div>
             <div className="w-full max-w-xs space-y-4">
                 {loginError && (
@@ -1025,15 +1023,112 @@ export default function App() {
                     {loginError}
                   </div>
                 )}
-                <input id="tc" type="password" placeholder="Teacher Code" disabled={loginLoading} className="w-full p-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] outline-none focus:border-[#7000FF] transition-all font-bold placeholder:text-white/10 text-white disabled:opacity-50" />
-                <button 
-                  onClick={handleTeacherLogin}
-                  disabled={loginLoading}
-                  className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-black text-lg uppercase hover:brightness-110 transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
-                >
-                  {loginLoading ? 'Verifying...' : 'Access Dashboard'}
-                </button>
+                <div className="relative group">
+                   <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="email" placeholder="Email" value={email}
+                     onChange={(e) => setEmail(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+                <div className="relative group">
+                   <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="password" placeholder="Password" value={password}
+                     onChange={(e) => setPassword(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleTeacherLogin}
+                    disabled={loginLoading}
+                    className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                  >
+                    {loginLoading ? 'Signing in...' : 'Sign in'}
+                  </button>
+                  <button 
+                    onClick={() => { setLoginError(''); setView('tutor_signup'); }}
+                    disabled={loginLoading}
+                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    Sign up
+                  </button>
+                </div>
                 <button onClick={() => { setView('login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">Back to Student Login</button>
+            </div>
+        </div>
+      )}
+
+      {view === 'tutor_signup' && (
+        <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
+            <div className="mb-8 text-center">
+               <h2 className="text-3xl font-black text-white mb-2">Create Tutor Account</h2>
+               <p className="text-white/50 text-sm">Sign up with your name, email and password</p>
+            </div>
+            <div className="w-full max-w-xs space-y-4">
+                {loginError && (
+                  <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginError}
+                  </div>
+                )}
+
+                <div className="relative group">
+                   <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={20} />
+                   <input 
+                     autoFocus type="text" placeholder="Full name" value={fullName}
+                     onChange={(e) => setFullName(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="relative group">
+                   <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="email" placeholder="Email" value={email}
+                     onChange={(e) => setEmail(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="relative group">
+                   <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="password" placeholder="Password" value={password}
+                     onChange={(e) => setPassword(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      if (!fullName) { setLoginError('Enter your full name'); return; }
+                      if (!email || !password) { setLoginError('Enter email and password'); return; }
+                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
+                      if (password.length < 6) { setLoginError('Password must be at least 6 characters'); return; }
+                      try {
+                        setLoginLoading(true);
+                        setLoginError('');
+                        await teacherAuthSignUp(email.toLowerCase(), password, fullName);
+                        setView('tutor_dashboard');
+                      } catch (err) {
+                        setLoginError(err.message || 'Signup failed');
+                      } finally { setLoginLoading(false); }
+                    }}
+                    disabled={loginLoading}
+                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {loginLoading ? 'Signing up...' : 'Sign up'}
+                  </button>
+
+                  <button onClick={() => { setView('tutor_login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                </div>
             </div>
         </div>
       )}
@@ -1336,6 +1431,9 @@ function TutorDashboard({ onLogout }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [expandedQuiz, setExpandedQuiz] = useState(null);
+    const [inviteLink, setInviteLink] = useState('');
+    const [inviteError, setInviteError] = useState('');
+    const [inviteLoading, setInviteLoading] = useState(false);
     const [reminders, setReminders] = useState(() => 
       JSON.parse(localStorage.getItem('ispeaktu_tutor_reminders') || '{}')
     );
@@ -1369,6 +1467,25 @@ function TutorDashboard({ onLogout }) {
         const newP = { ...praises, [s.id]: true };
         localStorage.setItem('ispeaktu_tutor_praise', JSON.stringify(newP));
         setPraises(newP);
+    };
+
+    const handleCreateInvite = async () => {
+        try {
+            setInviteLoading(true);
+            setInviteError('');
+            const invite = await createTeacherInvite();
+            const token = invite?.token;
+            if (!token) throw new Error('Invite token not created');
+            const link = `${window.location.origin}?invite=${token}`;
+            setInviteLink(link);
+            if (navigator?.clipboard?.writeText) {
+                await navigator.clipboard.writeText(link);
+            }
+        } catch (err) {
+            setInviteError(err.message || 'Failed to create invite');
+        } finally {
+            setInviteLoading(false);
+        }
     };
     
     if (selectedStudent) {
@@ -1519,10 +1636,48 @@ function TutorDashboard({ onLogout }) {
                <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Classroom</h1>
                <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Active Students Management</p>
             </div>
-            <button onClick={onLogout} className="w-10 h-10 rounded-full bg-[#16161D] border border-[#2D2D3A] flex items-center justify-center text-white/40 hover:text-[#FF2E63] transition-colors">
-                <Icon name="LogOut" size={18}/>
-            </button>
+            <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCreateInvite}
+                  disabled={inviteLoading}
+                  className="px-3 py-2 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white/60 text-[10px] font-black uppercase tracking-widest hover:text-white hover:border-[#00F2FF40] transition-colors disabled:opacity-50"
+                >
+                  {inviteLoading ? 'Creating...' : 'Invite Link'}
+                </button>
+                <button onClick={onLogout} className="w-10 h-10 rounded-full bg-[#16161D] border border-[#2D2D3A] flex items-center justify-center text-white/40 hover:text-[#FF2E63] transition-colors">
+                    <Icon name="LogOut" size={18}/>
+                </button>
+            </div>
         </div>
+
+        {(inviteLink || inviteError) && (
+          <div className="mb-6 px-2">
+            {inviteError && (
+              <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
+                {inviteError}
+              </div>
+            )}
+            {inviteLink && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  readOnly
+                  value={inviteLink}
+                  className="flex-1 bg-[#16161D] border border-[#2D2D3A] rounded-xl px-3 py-2 text-[10px] font-bold text-white/80 outline-none"
+                />
+                <button
+                  onClick={async () => {
+                    if (navigator?.clipboard?.writeText) {
+                      await navigator.clipboard.writeText(inviteLink);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-[#00F2FF] text-[#0A0A0C] text-[10px] font-black uppercase tracking-widest"
+                >
+                  Copy
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* --- SEARCH BAR --- */}
         <div className="relative mb-10 group">
