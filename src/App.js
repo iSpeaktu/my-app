@@ -40,6 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
+import { studentLogin, teacherLogin } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -172,6 +173,8 @@ export default function App() {
   const [view, setView] = useState('login'); 
   const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   
   const [onboardingData, setOnboardingData] = useState({
     material: null,
@@ -834,17 +837,58 @@ export default function App() {
 
   if (loading) return null;
 
-  const login = (name) => {
-    const normalized = name.trim().toLowerCase();
-    if (!normalized) return;
-    const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
-    if (saved) {
-        const p = JSON.parse(saved);
-        setUserName(p.userName);
-        setOnboardingData(rehydrateOnboardingData(p.onboardingData));
-        setStreakState(p.streakState);
+  const login = async (name) => {
+    const normalized = name.trim();
+    if (!normalized) {
+      setLoginError('Please enter your name');
+      return;
+    }
+    
+    try {
+      setLoginLoading(true);
+      setLoginError('');
+      const { student, isNewStudent } = await studentLogin(normalized);
+      
+      setUserName(normalized);
+      
+      if (isNewStudent) {
+        setView('ob_screen1');
+      } else {
+        // Try to load from localStorage
+        const saved = localStorage.getItem(`ispeaktu_data_${normalized.toLowerCase()}`);
+        if (saved) {
+          const p = JSON.parse(saved);
+          setOnboardingData(rehydrateOnboardingData(p.onboardingData));
+          setStreakState(p.streakState);
+        }
         setView('dashboard');
-    } else setView('ob_screen1');
+      }
+    } catch (error) {
+      setLoginError(error.message || 'Login failed');
+      console.error('Login error:', error);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleTeacherLogin = async () => {
+    const code = document.getElementById('tc')?.value?.trim();
+    if (!code) {
+      setLoginError('Please enter a teacher code');
+      return;
+    }
+    
+    try {
+      setLoginLoading(true);
+      setLoginError('');
+      await teacherLogin(code);
+      setView('tutor_dashboard');
+    } catch (error) {
+      setLoginError(error.message || 'Invalid teacher code');
+      console.error('Teacher login error:', error);
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   return (
@@ -871,24 +915,31 @@ export default function App() {
           </div>
           
           <div className="w-full max-w-xs space-y-4">
+            {loginError && (
+              <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
+                {loginError}
+              </div>
+            )}
             <div className="relative group">
                <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={20} />
                <input 
                  autoFocus type="text" placeholder="Student Name" value={userName}
                  onChange={(e) => setUserName(e.target.value)}
                  onKeyDown={(e) => e.key === 'Enter' && login(userName)}
-                 className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold"
+                 disabled={loginLoading}
+                 className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
                />
             </div>
             
             <button 
               onClick={() => login(userName)}
-              className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)]"
+              disabled={loginLoading}
+              className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
             >
-              Start Learning
+              {loginLoading ? 'Logging in...' : 'Start Learning'}
             </button>
             
-            <button onClick={() => setView('tutor_login')} className="w-full pt-4 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-4 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                <Icon name="Settings" size={12} />
                I am a Tutor
             </button>
@@ -900,17 +951,23 @@ export default function App() {
         <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
             <div className="mb-12 text-center">
                <h2 className="text-3xl font-black text-white mb-2 uppercase tracking-tighter">Tutor Portal</h2>
-               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Admin Access Only</p>
+               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Code Access Only</p>
             </div>
             <div className="w-full max-w-xs space-y-4">
-                <input id="tc" type="password" placeholder="Teacher Code" className="w-full p-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] outline-none focus:border-[#7000FF] transition-all font-bold placeholder:text-white/10 text-white" />
+                {loginError && (
+                  <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginError}
+                  </div>
+                )}
+                <input id="tc" type="password" placeholder="Teacher Code" disabled={loginLoading} className="w-full p-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] outline-none focus:border-[#7000FF] transition-all font-bold placeholder:text-white/10 text-white disabled:opacity-50" />
                 <button 
-                  onClick={() => { if (document.getElementById('tc').value === 'TEACHER2024') setView('tutor_dashboard'); }} 
-                  className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-black text-lg uppercase hover:brightness-110 transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)]"
+                  onClick={handleTeacherLogin}
+                  disabled={loginLoading}
+                  className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-black text-lg uppercase hover:brightness-110 transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
                 >
-                  Access Dashboard
+                  {loginLoading ? 'Verifying...' : 'Access Dashboard'}
                 </button>
-                <button onClick={() => setView('login')} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors">Back to Student Login</button>
+                <button onClick={() => { setView('login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">Back to Student Login</button>
             </div>
         </div>
       )}
