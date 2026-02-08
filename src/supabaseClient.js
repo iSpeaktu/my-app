@@ -195,3 +195,115 @@ export const studentAuthResetPassword = async (email, redirectTo) => {
     throw err;
   }
 };
+
+// --- TEACHER EMAIL/PASSWORD AUTH (email-only) ---
+export const teacherAuthSignUp = async (email, password, displayName) => {
+  try {
+    if (!email || !password) throw new Error('Email and password required');
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { role: 'teacher' }
+      }
+    });
+    if (error) throw error;
+
+    // Insert teacher profile only if missing (avoid overwriting existing data)
+    try {
+      const userId = data?.user?.id || null;
+      if (userId) {
+        const { data: existing, error: fetchErr } = await supabase
+          .from('teachers')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!existing) {
+          const { error: insertErr } = await supabase.from('teachers').insert([{
+            user_id: userId,
+            display_name: displayName || null,
+            created_at: new Date()
+          }]);
+          if (insertErr) throw insertErr;
+        }
+      }
+    } catch (insertErr) {
+      console.error('Failed to insert teachers row after signup:', insertErr);
+      // don't block signup on this error
+    }
+
+    return data.user;
+  } catch (err) {
+    console.error('teacherAuthSignUp error:', err);
+    throw err;
+  }
+};
+
+export const teacherAuthSignIn = async (email, password) => {
+  try {
+    if (!email || !password) throw new Error('Email and password required');
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data.user;
+  } catch (err) {
+    console.error('teacherAuthSignIn error:', err);
+    throw err;
+  }
+};
+
+const generateInviteToken = () => {
+  // Use a cryptographically secure token for invite links
+  const bytes = new Uint8Array(32);
+  const cryptoObj = globalThis?.crypto;
+  if (!cryptoObj?.getRandomValues) {
+    throw new Error('Secure random generator not available');
+  }
+  cryptoObj.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+export const createTeacherInvite = async () => {
+  try {
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr) throw userErr;
+    const userId = userData?.user?.id;
+    if (!userId) throw new Error('Not authenticated');
+
+    const token = generateInviteToken();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const { data, error } = await supabase
+      .from('teacher_invites')
+      .insert([{
+        teacher_user_id: userId,
+        token,
+        expires_at: expiresAt,
+        created_at: new Date()
+      }])
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('createTeacherInvite error:', err);
+    throw err;
+  }
+};
+
+export const redeemTeacherInvite = async (token) => {
+  try {
+    if (!token) throw new Error('Token required');
+    const { data, error } = await supabase
+      .from('teacher_invites')
+      .select('teacher_user_id, expires_at')
+      .eq('token', token)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (error) throw error;
+    return data?.teacher_user_id || null;
+  } catch (err) {
+    console.error('redeemTeacherInvite error:', err);
+    throw err;
+  }
+};
