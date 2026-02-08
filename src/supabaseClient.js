@@ -114,3 +114,34 @@ export const updateStudentData = async (studentName, updates) => {
     throw error;
   }
 };
+
+// --- STUDENT EMAIL/PASSWORD AUTH ---
+export const studentAuthSignIn = async (email, password) => {
+  try {
+    if (!email || !password) throw new Error('Email and password required');
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data.user;
+  } catch (err) {
+    console.error('studentAuthSignIn error:', err);
+    throw err;
+  }
+};
+
+export const studentAuthSignUp = async (email, password, username) => {
+  try {
+    if (!email || !password) throw new Error('Email and password required');
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { role: 'student', username: username || null }
+      }
+    });
+    if (error) throw error;
+    return data.user;
+  } catch (err) {
+    console.error('studentAuthSignUp error:', err);
+    throw err;
+  }
+};

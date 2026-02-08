@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { studentLogin, teacherLogin } from './supabaseClient';
+import { studentLogin, teacherLogin, studentAuthSignIn, studentAuthSignUp } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -175,6 +175,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [emailMode, setEmailMode] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   
   const [onboardingData, setOnboardingData] = useState({
     material: null,
@@ -840,19 +843,53 @@ export default function App() {
   if (loading) return null;
 
   const login = async (name) => {
-    const normalized = name.trim().toLowerCase();
-    if (!normalized) {
-      setLoginError('Please enter your name');
+    const raw = name?.trim();
+    if (!raw) {
+      setLoginError('Please enter your name or email');
       return;
     }
-    
+
+    // If the input looks like an email, prompt for password and use email/password auth
+    if (raw.includes('@')) {
+      const email = raw.toLowerCase();
+      const password = window.prompt(`Enter password for ${email}`);
+      if (!password) return;
+
+      try {
+        setLoginLoading(true);
+        setLoginError('');
+        const user = await studentAuthSignIn(email, password);
+        // derive a normalized username for local state/storage
+        const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
+        setUserName(normalized);
+
+        // Try to load stored data for this normalized username
+        const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
+        if (saved) {
+          const p = JSON.parse(saved);
+          setOnboardingData(rehydrateOnboardingData(p.onboardingData));
+          setStreakState(p.streakState);
+        }
+        setView('dashboard');
+      } catch (error) {
+        setLoginError(error.message || 'Email login failed');
+        console.error('Email login error:', error);
+      } finally {
+        setLoginLoading(false);
+      }
+
+      return;
+    }
+
+    // Otherwise treat as a simple username (existing flow)
+    const normalized = raw.toLowerCase();
     try {
       setLoginLoading(true);
       setLoginError('');
       const { student, isNewStudent } = await studentLogin(name);
-      
+
       setUserName(normalized);
-      
+
       if (isNewStudent) {
         setView('ob_screen1');
       } else {
@@ -922,29 +959,98 @@ export default function App() {
                 {loginError}
               </div>
             )}
-            <div className="relative group">
-               <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={20} />
-               <input 
-                 autoFocus type="text" placeholder="Student Name" value={userName}
-                 onChange={(e) => setUserName(e.target.value)}
-                 onKeyDown={(e) => e.key === 'Enter' && login(userName)}
-                 disabled={loginLoading}
-                 className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
-               />
-            </div>
-            
-            <button 
-              onClick={() => login(userName)}
-              disabled={loginLoading}
-              className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
-            >
-              {loginLoading ? 'Logging in...' : 'Start Learning'}
-            </button>
-            
-            <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-4 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-               <Icon name="Settings" size={12} />
-               I am a Tutor
-            </button>
+            {!emailMode ? (
+              <>
+                <div className="relative group">
+                   <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={20} />
+                   <input 
+                     autoFocus type="text" placeholder="Student Name" value={userName}
+                     onChange={(e) => setUserName(e.target.value)}
+                     onKeyDown={(e) => e.key === 'Enter' && login(userName)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+                
+                <button 
+                  onClick={() => login(userName)}
+                  disabled={loginLoading}
+                  className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                >
+                  {loginLoading ? 'Logging in...' : 'Start Learning'}
+                </button>
+
+                <div className="flex items-center justify-between gap-2">
+                  <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-4 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+                     <Icon name="Settings" size={12} />
+                     I am a Tutor
+                  </button>
+                  <button onClick={() => setEmailMode(true)} className="w-1/2 text-xs text-white/40 hover:text-white">Use email</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="relative group">
+                   <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={18} />
+                   <input 
+                     autoFocus type="email" placeholder="Email" value={email}
+                     onChange={(e) => setEmail(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+                <div className="relative group">
+                   <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="password" placeholder="Password" value={password}
+                     onChange={(e) => setPassword(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+                <button 
+                  onClick={async () => {
+                    if (!email) { setLoginError('Enter email'); return; }
+                    try {
+                      setLoginLoading(true);
+                      setLoginError('');
+                      const user = await studentAuthSignIn(email.toLowerCase(), password);
+                      const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
+                      setUserName(normalized);
+                      const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
+                      if (saved) {
+                        const p = JSON.parse(saved);
+                        setOnboardingData(rehydrateOnboardingData(p.onboardingData));
+                        setStreakState(p.streakState);
+                      }
+                      setView('dashboard');
+                    } catch (err) {
+                      setLoginError(err.message || 'Email login failed');
+                    } finally { setLoginLoading(false); }
+                  }}
+                  disabled={loginLoading}
+                  className="w-full bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                >
+                  {loginLoading ? 'Signing in...' : 'Sign in'}
+                </button>
+                <div className="flex items-center justify-between gap-2">
+                  <button onClick={() => setEmailMode(false)} className="w-1/2 text-xs text-white/40 hover:text-white">Use name</button>
+                  <button onClick={async () => {
+                    if (!email || !password) { setLoginError('Enter email and password'); return; }
+                    try {
+                      setLoginLoading(true);
+                      setLoginError('');
+                      const user = await studentAuthSignUp(email.toLowerCase(), password, userName || undefined);
+                      const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
+                      setUserName(normalized);
+                      setView('ob_screen1');
+                    } catch (err) {
+                      setLoginError(err.message || 'Signup failed');
+                    } finally { setLoginLoading(false); }
+                  }} className="w-1/2 text-xs text-white/40 hover:text-white">Sign up</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1254,14 +1360,14 @@ function TutorDashboard({ onLogout }) {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4 px-2">Quiz History</h3>
             <div className="space-y-3">
                 {selectedStudent.history && selectedStudent.history.length > 0 ? (
-                    [...selectedStudent.history].reverse().map((h, i) => {
-                        const isExpanded = expandedQuiz === i;
-                        return (
-                            <div key={i}>
-                                <div 
-                                    onClick={() => setExpandedQuiz(isExpanded ? null : i)}
-                                    className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex items-center justify-between group hover:border-white/10 transition-all cursor-pointer"
-                                >
+                  selectedStudent.history.slice().sort((a,b) => (a.lessonId || 0) - (b.lessonId || 0)).map((h, i) => {
+                    const isExpanded = expandedQuiz === i;
+                    return (
+                      <div key={i}>
+                        <div 
+                          onClick={() => setExpandedQuiz(isExpanded ? null : i)}
+                          className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex items-center justify-between group hover:border-white/10 transition-all cursor-pointer"
+                        >
                                     <div>
                                         <div className="text-[10px] font-black text-white/30 uppercase tracking-tighter mb-1">
                                             {new Date(h.date).toLocaleDateString()} • {new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
