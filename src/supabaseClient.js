@@ -255,9 +255,7 @@ export const teacherAuthSignIn = async (email, password) => {
 const generateInviteToken = () => {
   // Use a cryptographically secure token for invite links
   const bytes = new Uint8Array(32);
-  const cryptoObj =
-    (typeof window !== 'undefined' && window.crypto) ||
-    (typeof self !== 'undefined' && self.crypto);
+  const cryptoObj = (typeof window !== 'undefined' && window.crypto) || null;
   if (!cryptoObj?.getRandomValues) {
     throw new Error('Secure random generator not available');
   }
