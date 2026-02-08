@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { studentLogin, teacherLogin, studentAuthSignIn, studentAuthSignUp } from './supabaseClient';
+import { studentLogin, teacherLogin, studentAuthSignIn, studentAuthSignUp, getAllStudents, findStudentEmailByUsername } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -928,20 +928,12 @@ export default function App() {
               </div>
             )}
 
-            <div className="relative group">
-               <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={20} />
-               <input 
-                 autoFocus type="text" placeholder="Full name" value={fullName}
-                 onChange={(e) => setFullName(e.target.value)}
-                 disabled={loginLoading}
-                 className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
-               />
-            </div>
+            {/* Full name removed from login form: signup will prompt for name separately */}
 
             <div className="relative group">
                <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={18} />
                <input 
-                 type="email" placeholder="Email" value={email}
+                 type="text" placeholder="Email or username" value={email}
                  onChange={(e) => setEmail(e.target.value)}
                  disabled={loginLoading}
                  className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
@@ -961,14 +953,26 @@ export default function App() {
             <div className="flex gap-2">
               <button 
                 onClick={async () => {
-                  if (!email) { setLoginError('Enter email'); return; }
-                  if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
+                  if (!email) { setLoginError('Enter email or username'); return; }
                   if (!password) { setLoginError('Enter password'); return; }
+
                   try {
                     setLoginLoading(true);
                     setLoginError('');
-                    const user = await studentAuthSignIn(email.toLowerCase(), password);
-                    const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
+
+                    let loginEmail = null;
+                    if (email.includes('@')) {
+                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); setLoginLoading(false); return; }
+                      loginEmail = email.toLowerCase();
+                    } else {
+                      // treat input as username, resolve to email
+                      const resolved = await findStudentEmailByUsername(email);
+                      if (!resolved) { setLoginError('No account found for that username'); setLoginLoading(false); return; }
+                      loginEmail = resolved.toLowerCase();
+                    }
+
+                    const user = await studentAuthSignIn(loginEmail, password);
+                    const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || loginEmail).toLowerCase();
                     setUserName(normalized);
                     const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
                     if (saved) {
@@ -989,17 +993,18 @@ export default function App() {
 
               <button 
                 onClick={async () => {
-                  if (!fullName) { setLoginError('Enter your full name'); return; }
+                  const nameInput = window.prompt('Enter your full name');
+                  if (!nameInput) { setLoginError('Enter your full name'); return; }
                   if (!email || !password) { setLoginError('Enter email and password'); return; }
                   if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
                   if (password.length < 6) { setLoginError('Password must be at least 6 characters'); return; }
                   try {
                     setLoginLoading(true);
                     setLoginError('');
-                    const user = await studentAuthSignUp(email.toLowerCase(), password, fullName);
+                    const user = await studentAuthSignUp(email.toLowerCase(), password, nameInput);
                     const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
                     setUserName(normalized);
-                    persistData({ userName: normalized, displayName: fullName, onboardingData, streakState });
+                    persistData({ userName: normalized, displayName: nameInput, onboardingData, streakState });
                     setView('ob_screen1');
                   } catch (err) {
                     setLoginError(err.message || 'Signup failed');

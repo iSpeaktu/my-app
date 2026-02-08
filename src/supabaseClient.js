@@ -25,25 +25,23 @@ export const studentLogin = async (studentName) => {
     const { data: existingStudent, error: fetchError } = await supabase
       .from('students')
       .select('*')
-      .eq('name', normalizedName)
-      .single();
+      .or(`name.eq.${normalizedName},display_name.eq.${normalizedName}`)
+      .maybeSingle();
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      // Error other than "not found"
+    if (fetchError) {
       throw fetchError;
     }
 
     if (existingStudent) {
-      // Student exists
       return { student: existingStudent, isNewStudent: false };
     }
 
     // Create new student with normalized name
     const { data: newStudent, error: insertError } = await supabase
       .from('students')
-      .insert([{ name: normalizedName, created_at: new Date() }])
+      .insert([{ name: normalizedName, display_name: studentName.trim(), created_at: new Date() }])
       .select()
-      .single();
+      .maybeSingle();
 
     if (insertError) throw insertError;
     return { student: newStudent, isNewStudent: true };
@@ -90,7 +88,11 @@ export const getAllStudents = async () => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return students;
+    // Prefer a human-friendly display name when available
+    return (students || []).map(s => {
+      const display = s.display_name || s.displayName || s.name || (s.email ? s.email.split('@')[0] : '');
+      return { ...s, name: display };
+    });
   } catch (error) {
     console.error('Error fetching students:', error);
     return [];
@@ -100,12 +102,13 @@ export const getAllStudents = async () => {
 // --- UPDATE STUDENT DATA ---
 export const updateStudentData = async (studentName, updates) => {
   try {
+    const normalized = (studentName || '').toLowerCase();
     const { data, error } = await supabase
       .from('students')
       .update(updates)
-      .eq('name', studentName)
+      .or(`name.eq.${normalized},display_name.eq.${normalized}`)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
     return data;
@@ -142,9 +145,12 @@ export const studentAuthSignUp = async (email, password, username) => {
     // After successful signup, ensure a students row exists
     try {
       const normalized = (username || email.split('@')[0]).toLowerCase();
-      await supabase.from('students').insert([{ name: normalized, email, created_at: new Date() }]);
+      // Upsert so we don't create duplicates and preserve the display name from signup
+      await supabase.from('students').upsert([
+        { name: normalized, email, display_name: username || null, created_at: new Date() }
+      ], { onConflict: 'name' });
     } catch (insertErr) {
-      console.error('Failed to create students row after signup:', insertErr);
+      console.error('Failed to upsert students row after signup:', insertErr);
       // don't block signup on this error
     }
 
@@ -152,5 +158,24 @@ export const studentAuthSignUp = async (email, password, username) => {
   } catch (err) {
     console.error('studentAuthSignUp error:', err);
     throw err;
+  }
+};
+
+// Find a student's email by username or display name (case-insensitive)
+export const findStudentEmailByUsername = async (identifier) => {
+  try {
+    const normalized = (identifier || '').trim().toLowerCase();
+    if (!normalized) return null;
+    const { data, error } = await supabase
+      .from('students')
+      .select('email,name,display_name')
+      .or(`name.eq.${normalized},display_name.eq.${normalized}`)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data?.email || null;
+  } catch (err) {
+    console.error('findStudentEmailByUsername error:', err);
+    return null;
   }
 };
