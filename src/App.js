@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { studentLogin, teacherLogin, studentAuthSignIn, studentAuthSignUp, getAllStudents, findStudentEmailByUsername } from './supabaseClient';
+import { studentLogin, teacherLogin, studentAuthSignIn, studentAuthSignUp, getAllStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -1005,27 +1005,7 @@ export default function App() {
                  <Icon name="Settings" size={12} />
                  I am a Tutor
               </button>
-              <button onClick={async () => {
-                  const input = window.prompt('Enter your email or username to reset your password');
-                  if (!input) return;
-                  try {
-                    setLoginLoading(true);
-                    setLoginError('');
-                    let targetEmail = null;
-                    if (input.includes('@')) {
-                      if (!isValidEmail(input)) { setLoginError('Enter a valid email address'); setLoginLoading(false); return; }
-                      targetEmail = input.toLowerCase();
-                    } else {
-                      const resolved = await findStudentEmailByUsername(input);
-                      if (!resolved) { setLoginError('No account found for that username'); setLoginLoading(false); return; }
-                      targetEmail = resolved.toLowerCase();
-                    }
-                    await studentAuthResetPassword(targetEmail);
-                    setLoginError('Password reset email sent. Check your inbox.');
-                  } catch (err) {
-                    setLoginError(err.message || 'Failed to send reset email');
-                  } finally { setLoginLoading(false); }
-                }} className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">
+              <button onClick={() => { setView('reset'); setLoginError(''); }} className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">
                   Forgot password?
               </button>
             </div>
@@ -1124,6 +1104,63 @@ export default function App() {
                     className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
                   >
                     {loginLoading ? 'Signing up...' : 'Sign up'}
+                  </button>
+
+                  <button onClick={() => { setView('login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {view === 'reset' && (
+        <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
+            <div className="mb-8 text-center">
+               <h2 className="text-3xl font-black text-white mb-2">Reset Password</h2>
+               <p className="text-white/50 text-sm">Enter your email or username to receive a password reset link</p>
+            </div>
+            <div className="w-full max-w-xs space-y-4">
+                {loginError && (
+                  <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginError}
+                  </div>
+                )}
+
+                <div className="relative group">
+                   <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     autoFocus type="text" placeholder="Email or username" value={email}
+                     onChange={(e) => setEmail(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      if (!email) { setLoginError('Enter email or username'); return; }
+                      try {
+                        setLoginLoading(true);
+                        setLoginError('');
+                        let targetEmail = null;
+                        if (email.includes('@')) {
+                          if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); setLoginLoading(false); return; }
+                          targetEmail = email.toLowerCase();
+                        } else {
+                          const resolved = await findStudentEmailByUsername(email);
+                          if (!resolved) { setLoginError('No account found for that username'); setLoginLoading(false); return; }
+                          targetEmail = resolved.toLowerCase();
+                        }
+                        await studentAuthResetPassword(targetEmail);
+                        setLoginError('Password reset email sent. Check your inbox.');
+                      } catch (err) {
+                        setLoginError(err.message || 'Failed to send reset email');
+                      } finally { setLoginLoading(false); }
+                    }}
+                    disabled={loginLoading}
+                    className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                  >
+                    {loginLoading ? 'Sending...' : 'Send reset email'}
                   </button>
 
                   <button onClick={() => { setView('login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
