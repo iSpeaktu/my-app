@@ -206,7 +206,8 @@ export default function App() {
     if (savedData) {
       const parsed = JSON.parse(savedData);
       if (parsed.userName) {
-        setUserName(parsed.userName);
+        const normalizedUserName = parsed.userName.toLowerCase();
+        setUserName(normalizedUserName);
         setOnboardingData(rehydrateOnboardingData(parsed.onboardingData));
         
         let currentStreakState = parsed.streakState || streakState;
@@ -236,16 +237,17 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
 
     if (newData.userName) {
-      localStorage.setItem(`ispeaktu_data_${newData.userName.toLowerCase()}`, JSON.stringify(newData));
+      const normalizedUserName = newData.userName.toLowerCase();
+      localStorage.setItem(`ispeaktu_data_${normalizedUserName}`, JSON.stringify(newData));
       
       const allStudents = JSON.parse(localStorage.getItem('ispeaktu_all_students') || '[]');
       const history = newData.streakState?.completedHistory || [];
       const lastHistItem = history.slice(-1)[0];
       
       const studentSummary = {
-        id: newData.userName,
-        userName: newData.userName,
-        name: newData.userName,
+        id: normalizedUserName,
+        userName: normalizedUserName,
+        name: normalizedUserName,
         xp: history.filter(h => h.passed).length * 10, // XP rule: +10 per passed lesson
         streak: newData.streakState?.weeklyStreak || 0,
         progress: newData.onboardingData?.level || 'Beginner',
@@ -263,7 +265,7 @@ export default function App() {
         history
       };
 
-      const existingIndex = allStudents.findIndex(s => s.userName === newData.userName);
+      const existingIndex = allStudents.findIndex(s => s.userName === normalizedUserName);
       if (existingIndex >= 0) allStudents[existingIndex] = { ...allStudents[existingIndex], ...studentSummary };
       else allStudents.push(studentSummary);
       localStorage.setItem('ispeaktu_all_students', JSON.stringify(allStudents));
@@ -838,7 +840,7 @@ export default function App() {
   if (loading) return null;
 
   const login = async (name) => {
-    const normalized = name.trim();
+    const normalized = name.trim().toLowerCase();
     if (!normalized) {
       setLoginError('Please enter your name');
       return;
@@ -847,15 +849,15 @@ export default function App() {
     try {
       setLoginLoading(true);
       setLoginError('');
-      const { student, isNewStudent } = await studentLogin(normalized);
+      const { student, isNewStudent } = await studentLogin(name);
       
       setUserName(normalized);
       
       if (isNewStudent) {
         setView('ob_screen1');
       } else {
-        // Try to load from localStorage
-        const saved = localStorage.getItem(`ispeaktu_data_${normalized.toLowerCase()}`);
+        // Try to load from localStorage using normalized name
+        const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
         if (saved) {
           const p = JSON.parse(saved);
           setOnboardingData(rehydrateOnboardingData(p.onboardingData));

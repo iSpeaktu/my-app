@@ -18,11 +18,14 @@ export const studentLogin = async (studentName) => {
       throw new Error('Student name is required');
     }
 
-    // Fetch or create student record
+    // Normalize name to lowercase for case-insensitive matching
+    const normalizedName = studentName.trim().toLowerCase();
+
+    // Fetch or create student record using normalized name
     const { data: existingStudent, error: fetchError } = await supabase
       .from('students')
       .select('*')
-      .eq('name', studentName.trim())
+      .eq('name', normalizedName)
       .single();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
@@ -35,10 +38,10 @@ export const studentLogin = async (studentName) => {
       return { student: existingStudent, isNewStudent: false };
     }
 
-    // Create new student
+    // Create new student with normalized name
     const { data: newStudent, error: insertError } = await supabase
       .from('students')
-      .insert([{ name: studentName.trim(), created_at: new Date() }])
+      .insert([{ name: normalizedName, created_at: new Date() }])
       .select()
       .single();
 
