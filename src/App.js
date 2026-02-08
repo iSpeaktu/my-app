@@ -992,28 +992,11 @@ export default function App() {
               </button>
 
               <button 
-                onClick={async () => {
-                  const nameInput = window.prompt('Enter your full name');
-                  if (!nameInput) { setLoginError('Enter your full name'); return; }
-                  if (!email || !password) { setLoginError('Enter email and password'); return; }
-                  if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
-                  if (password.length < 6) { setLoginError('Password must be at least 6 characters'); return; }
-                  try {
-                    setLoginLoading(true);
-                    setLoginError('');
-                    const user = await studentAuthSignUp(email.toLowerCase(), password, nameInput);
-                    const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
-                    setUserName(normalized);
-                    persistData({ userName: normalized, displayName: nameInput, onboardingData, streakState });
-                    setView('ob_screen1');
-                  } catch (err) {
-                    setLoginError(err.message || 'Signup failed');
-                  } finally { setLoginLoading(false); }
-                }}
+                onClick={() => { setLoginError(''); setView('signup'); }}
                 disabled={loginLoading}
                 className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
               >
-                {loginLoading ? 'Signing up...' : 'Sign up'}
+                Sign up
               </button>
             </div>
 
@@ -1048,6 +1031,80 @@ export default function App() {
                   {loginLoading ? 'Verifying...' : 'Access Dashboard'}
                 </button>
                 <button onClick={() => { setView('login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">Back to Student Login</button>
+            </div>
+        </div>
+      )}
+
+      {view === 'signup' && (
+        <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
+            <div className="mb-8 text-center">
+               <h2 className="text-3xl font-black text-white mb-2">Create an Account</h2>
+               <p className="text-white/50 text-sm">Sign up with your name, email and password</p>
+            </div>
+            <div className="w-full max-w-xs space-y-4">
+                {loginError && (
+                  <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginError}
+                  </div>
+                )}
+
+                <div className="relative group">
+                   <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={20} />
+                   <input 
+                     autoFocus type="text" placeholder="Full name" value={fullName}
+                     onChange={(e) => setFullName(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-4 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="relative group">
+                   <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="email" placeholder="Email" value={email}
+                     onChange={(e) => setEmail(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="relative group">
+                   <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
+                   <input 
+                     type="password" placeholder="Password" value={password}
+                     onChange={(e) => setPassword(e.target.value)}
+                     disabled={loginLoading}
+                     className="w-full pl-12 pr-4 py-3 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 outline-none transition-all placeholder:text-white/10 font-bold disabled:opacity-50"
+                   />
+                </div>
+
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      if (!fullName) { setLoginError('Enter your full name'); return; }
+                      if (!email || !password) { setLoginError('Enter email and password'); return; }
+                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
+                      if (password.length < 6) { setLoginError('Password must be at least 6 characters'); return; }
+                      try {
+                        setLoginLoading(true);
+                        setLoginError('');
+                        const user = await studentAuthSignUp(email.toLowerCase(), password, fullName);
+                        const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
+                        setUserName(normalized);
+                        persistData({ userName: normalized, displayName: fullName, onboardingData, streakState });
+                        setView('ob_screen1');
+                      } catch (err) {
+                        setLoginError(err.message || 'Signup failed');
+                      } finally { setLoginLoading(false); }
+                    }}
+                    disabled={loginLoading}
+                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {loginLoading ? 'Signing up...' : 'Sign up'}
+                  </button>
+
+                  <button onClick={() => { setView('login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                </div>
             </div>
         </div>
       )}
