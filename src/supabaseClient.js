@@ -139,6 +139,15 @@ export const studentAuthSignUp = async (email, password, username) => {
       }
     });
     if (error) throw error;
+    // After successful signup, ensure a students row exists
+    try {
+      const normalized = (username || email.split('@')[0]).toLowerCase();
+      await supabase.from('students').insert([{ name: normalized, email, created_at: new Date() }]);
+    } catch (insertErr) {
+      console.error('Failed to create students row after signup:', insertErr);
+      // don't block signup on this error
+    }
+
     return data.user;
   } catch (err) {
     console.error('studentAuthSignUp error:', err);
