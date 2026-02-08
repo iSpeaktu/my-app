@@ -434,7 +434,7 @@ export default function App() {
                         <h3 className="font-bold text-lg text-white">{onboardingData.material?.title || "Language Track"}</h3>
                         <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData.level}</p>
                     </div>
-                    <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">Continue</div>
+                    <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
                 </div>
             </Card>
         </div>
@@ -1138,6 +1138,7 @@ export default function App() {
 function TutorDashboard({ onLogout }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
+    const [expandedQuiz, setExpandedQuiz] = useState(null);
     const [reminders, setReminders] = useState(() => 
       JSON.parse(localStorage.getItem('ispeaktu_tutor_reminders') || '{}')
     );
@@ -1152,7 +1153,11 @@ function TutorDashboard({ onLogout }) {
     );
     
     const handleRemind = (e, s) => {
-        e.stopPropagation(); 
+        e.stopPropagation();
+        // Prevent reminders for students with no quiz history
+        if (!s.history || s.history.length === 0) {
+            return;
+        }
         const newR = { ...reminders, [s.id]: { 
             lessonId: s.lastLessonId, 
             materialId: s.lastMaterialId, 
@@ -1188,7 +1193,7 @@ function TutorDashboard({ onLogout }) {
 
         return (
           <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-right-8">
-            <button onClick={() => setSelectedStudent(null)} className="flex items-center gap-2 text-[#00F2FF] font-black uppercase text-[10px] tracking-widest mb-6 group">
+            <button onClick={() => { setSelectedStudent(null); setExpandedQuiz(null); }} className="flex items-center gap-2 text-[#00F2FF] font-black uppercase text-[10px] tracking-widest mb-6 group">
                 <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to Overview
             </button>
             <div className="bg-[#16161D] border border-[#2D2D3A] rounded-3xl p-8 mb-8 relative overflow-hidden">
@@ -1247,23 +1252,61 @@ function TutorDashboard({ onLogout }) {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4 px-2">Quiz History</h3>
             <div className="space-y-3">
                 {selectedStudent.history && selectedStudent.history.length > 0 ? (
-                    [...selectedStudent.history].reverse().map((h, i) => (
-                        <div key={i} className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex items-center justify-between group hover:border-white/10 transition-colors">
-                            <div>
-                                <div className="text-[10px] font-black text-white/30 uppercase tracking-tighter mb-1">
-                                    {new Date(h.date).toLocaleDateString()} • {new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    [...selectedStudent.history].reverse().map((h, i) => {
+                        const isExpanded = expandedQuiz === i;
+                        return (
+                            <div key={i}>
+                                <div 
+                                    onClick={() => setExpandedQuiz(isExpanded ? null : i)}
+                                    className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex items-center justify-between group hover:border-white/10 transition-all cursor-pointer"
+                                >
+                                    <div>
+                                        <div className="text-[10px] font-black text-white/30 uppercase tracking-tighter mb-1">
+                                            {new Date(h.date).toLocaleDateString()} • {new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                        <div className="font-bold text-white leading-none">Lesson {h.lessonId}</div>
+                                        <div className="text-[9px] text-[#00F2FF] font-black uppercase tracking-widest mt-1.5">{h.material} • {h.level}</div>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <div className={`text-2xl font-black ${h.passed ? 'text-[#00FF94]' : 'text-[#FF2E63]'}`}>{h.score}%</div>
+                                        <div className={`text-[8px] font-black uppercase tracking-widest ${h.passed ? 'text-[#00FF9440]' : 'text-[#FF2E6340]'}`}>
+                                            {h.passed ? 'Passed' : 'Needs Review'}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="font-bold text-white leading-none">Lesson {h.lessonId}</div>
-                                <div className="text-[9px] text-[#00F2FF] font-black uppercase tracking-widest mt-1.5">{h.material} • {h.level}</div>
+                                
+                                {isExpanded && h.failures && h.failures.length > 0 && (
+                                    <div className="bg-[#16161D] border border-[#2D2D3A] border-t-0 rounded-b-2xl p-5 animate-in slide-in-from-top-2">
+                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-[#FF2E63] mb-4 flex items-center gap-2">
+                                            <AlertTriangle size={12} /> Incorrect Answers
+                                        </h4>
+                                        <div className="space-y-4">
+                                            {h.failures.map((f, idx) => (
+                                                <div key={idx} className="bg-[#0A0A0C] border border-[#FF2E6330] rounded-xl p-4 space-y-2">
+                                                    <div className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-2">Question {idx + 1}</div>
+                                                    <p className="text-sm font-bold text-white mb-3">{f.question}</p>
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="w-6 h-6 rounded-full bg-[#FF2E63]/20 border border-[#FF2E63] flex items-center justify-center shrink-0 text-[#FF2E63] text-[10px] font-black">✕</div>
+                                                            <div className="text-sm text-white/70">
+                                                                <span className="text-[#FF2E63] font-bold">Student answered:</span> {f.answer}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-start gap-3">
+                                                            <div className="w-6 h-6 rounded-full bg-[#00FF94]/20 border border-[#00FF94] flex items-center justify-center shrink-0 text-[#00FF94] text-[10px] font-black">✓</div>
+                                                            <div className="text-sm text-white/70">
+                                                                <span className="text-[#00FF94] font-bold">Correct answer:</span> {f.correct}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex flex-col items-end">
-                                <div className={`text-2xl font-black ${h.passed ? 'text-[#00FF94]' : 'text-[#FF2E63]'}`}>{h.score}%</div>
-                                <div className={`text-[8px] font-black uppercase tracking-widest ${h.passed ? 'text-[#00FF9440]' : 'text-[#FF2E6340]'}`}>
-                                    {h.passed ? 'Passed' : 'Needs Review'}
-                                </div>
-                            </div>
-                        </div>
-                    ))
+                        );
+                    })
                 ) : (
                     <p className="text-center opacity-20 py-10">No history available.</p>
                 )}
@@ -1321,7 +1364,7 @@ function TutorDashboard({ onLogout }) {
                 return (
                     <div 
                         key={s.id} 
-                        onClick={() => setSelectedStudent(s)}
+                        onClick={() => { setSelectedStudent(s); setExpandedQuiz(null); }}
                         className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-[#00F2FF40] hover:bg-[#1C1C26] transition-all active:scale-[0.99] group"
                     >
                         <div className="flex items-center gap-4">
@@ -1336,7 +1379,7 @@ function TutorDashboard({ onLogout }) {
                             </div>
                         </div>
                         
-                        {needsRetake ? (
+                        {needsRetake && s.history && s.history.length > 0 ? (
                             <button 
                                 onClick={(e) => handleRemind(e, s)}
                                 className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 ${reminders[s.id] ? 'bg-[#2D2D3A] text-white/20' : 'bg-[#FF2E63] text-white hover:brightness-110 active:scale-95'}`}
@@ -1344,7 +1387,7 @@ function TutorDashboard({ onLogout }) {
                                 <Icon name="Bell" size={12} />
                                 {reminders[s.id] ? 'Reminded' : 'Remind'}
                             </button>
-                        ) : (
+                        ) : (!needsRetake && s.history && s.history.length > 0) ? (
                             <button 
                                 onClick={(e) => handlePraise(e, s)}
                                 className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 ${praises[s.id] ? 'bg-[#2D2D3A] text-white/20' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95'}`}
@@ -1352,7 +1395,7 @@ function TutorDashboard({ onLogout }) {
                                 <Icon name="ThumbsUp" size={12} />
                                 {praises[s.id] ? 'Sent' : 'Thumbs Up'}
                             </button>
-                        )}
+                        ) : null}
                     </div>
                 );
             })}
