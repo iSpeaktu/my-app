@@ -1001,9 +1001,32 @@ export default function App() {
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-2">
-              <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                  <Icon name="Settings" size={12} />
                  I am a Tutor
+              </button>
+              <button onClick={async () => {
+                  const input = window.prompt('Enter your email or username to reset your password');
+                  if (!input) return;
+                  try {
+                    setLoginLoading(true);
+                    setLoginError('');
+                    let targetEmail = null;
+                    if (input.includes('@')) {
+                      if (!isValidEmail(input)) { setLoginError('Enter a valid email address'); setLoginLoading(false); return; }
+                      targetEmail = input.toLowerCase();
+                    } else {
+                      const resolved = await findStudentEmailByUsername(input);
+                      if (!resolved) { setLoginError('No account found for that username'); setLoginLoading(false); return; }
+                      targetEmail = resolved.toLowerCase();
+                    }
+                    await studentAuthResetPassword(targetEmail);
+                    setLoginError('Password reset email sent. Check your inbox.');
+                  } catch (err) {
+                    setLoginError(err.message || 'Failed to send reset email');
+                  } finally { setLoginLoading(false); }
+                }} className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">
+                  Forgot password?
               </button>
             </div>
           </div>

@@ -179,3 +179,19 @@ export const findStudentEmailByUsername = async (identifier) => {
     return null;
   }
 };
+
+// Send password reset email for a student (Supabase will email a reset link)
+export const studentAuthResetPassword = async (email, redirectTo) => {
+  try {
+    if (!email) throw new Error('Email required');
+    // redirectTo is optional - Supabase will redirect user there after they set a new password
+    const options = {};
+    if (redirectTo) options.redirectTo = redirectTo;
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, options);
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('studentAuthResetPassword error:', err);
+    throw err;
+  }
+};
