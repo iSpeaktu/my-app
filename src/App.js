@@ -1683,14 +1683,14 @@ function TutorDashboard({ onLogout }) {
             const list = await getTeacherStudents();
             if (active) setStudents(list);
         })();
-      (async () => {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData?.session?.user;
-        if (user) {
-          const name = user.user_metadata?.username || (user.email || '').split('@')[0] || '';
-          if (active) setTeacherName(name);
-        }
-      })();
+        (async () => {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const user = sessionData?.session?.user;
+            if (user && active) {
+                const name = user.user_metadata?.display_name || user.user_metadata?.username || (user.email || '').split('@')[0] || '';
+                if (active && name) setTeacherName(name);
+            }
+        })();
         return () => { active = false; };
     }, []);
     
@@ -1884,8 +1884,8 @@ function TutorDashboard({ onLogout }) {
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
           <div className="flex justify-between items-start mb-10 px-2">
             <div>
-               <h1 className="text-2xl font-black text-white uppercase tracking-tighter">{teacherName ? `Tutor ${teacherName}` : 'Tutor'}</h1>
-               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Welcome to your classroom</p>
+               <h1 className="text-2xl font-black text-white tracking-tighter">{teacherName ? `Tutor ${teacherName}` : 'Tutor'}</h1>
+               <p className="text-[#00F2FF] text-[10px] font-black tracking-widest opacity-60">Welcome to your classroom</p>
             </div>
             <div className="flex items-center gap-2">
                 <button

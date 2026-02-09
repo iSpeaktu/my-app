@@ -32,32 +32,66 @@ const ensureTeacherProfile = async (user, displayName) => {
   try {
     const userId = user?.id || null;
     if (!userId) return;
+    
     const display = displayName || user?.user_metadata?.display_name || user?.user_metadata?.username || null;
     const { data: existing, error: fetchErr } = await supabase
       .from('teachers')
-      .select('id, code')
+      .select('id, code, display_name')
       .eq('user_id', userId)
       .maybeSingle();
-    if (fetchErr) throw fetchErr;
+    
+    if (fetchErr) {
+      console.error('Error fetching existing teacher:', fetchErr);
+      throw fetchErr;
+    }
 
-    if (existing?.code) return;
+    // If teacher exists with code but no display_name, update it
+    if (existing?.id && existing?.code) {
+      if (!existing.display_name && display) {
+        const { error: updateErr } = await supabase
+          .from('teachers')
+          .update({ display_name: display })
+          .eq('id', existing.id);
+        if (updateErr) console.error('Error updating teacher display_name:', updateErr);
+      }
+      return;
+    }
 
+    // Try to insert a new teacher record with a unique code
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const code = generateTeacherCode();
-      const payload = existing?.id
-        ? { code }
-        : { user_id: userId, display_name: display, created_at: new Date(), code };
-      const res = existing?.id
-        ? await supabase.from('teachers').update(payload).eq('id', existing.id)
-        : await supabase.from('teachers').insert([payload]);
-      if (!res.error) return;
-      const msg = (res.error?.message || '').toLowerCase();
-      if (res.error?.code === '23505' || msg.includes('duplicate')) continue;
-      throw res.error;
+      const payload = {
+        user_id: userId,
+        display_name: display,
+        created_at: new Date().toISOString(),
+        code
+      };
+      
+      const { error: insertErr } = await supabase
+        .from('teachers')
+        .insert([payload]);
+      
+      if (!insertErr) {
+        console.log('Teacher record created successfully:', { userId, display_name: display });
+        return;
+      }
+      
+      const msg = (insertErr?.message || '').toLowerCase();
+      // Retry only on duplicate code
+      if (insertErr?.code === '23505' || msg.includes('duplicate')) {
+        console.warn(`Attempt ${attempt + 1}: Duplicate code, retrying...`);
+        continue;
+      }
+      
+      // Other errors should be thrown
+      console.error('Failed to insert teacher record:', insertErr);
+      throw insertErr;
     }
-    throw new Error('Failed to allocate unique teacher code');
+    
+    throw new Error('Failed to allocate unique teacher code after 5 attempts');
   } catch (err) {
     console.error('Failed to ensure teachers row:', err);
+    throw err;
   }
 };
 
@@ -354,7 +388,7 @@ export const teacherAuthSignUp = async (email, password, displayName) => {
       email,
       password,
       options: {
-        data: { role: 'teacher', display_name: displayName || null }
+        data: { role: 'teacher', username: displayName || null, display_name: displayName || null }
       }
     });
     if (error) throw error;
