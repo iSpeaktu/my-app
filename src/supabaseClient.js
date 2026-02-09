@@ -30,7 +30,7 @@ const ensureTeacherProfile = async (user, displayName) => {
 
     const { error } = await supabase
       .from('teachers')
-      .upsert([{ id: userId, display_name: display || null }], { onConflict: 'id' });
+      .upsert([{ id: userId, display_name: display || null }], { onConflict: 'id', returning: 'minimal' });
 
     if (error) throw error;
   } catch (err) {
