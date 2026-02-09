@@ -208,8 +208,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    const token = getInviteToken();
-    if (token) localStorage.setItem('ispeaktu_invite_token', token);
+    const urlToken = getInviteToken();
+    if (urlToken) localStorage.setItem('ispeaktu_invite_token', urlToken);
+    const token = urlToken || getStoredInviteToken();
     if (!token) return;
     let active = true;
     (async () => {
@@ -260,6 +261,19 @@ export default function App() {
         setStreakState(currentStreakState);
         setSettings(parsed.settings || settings);
         setView('dashboard');
+      } else if (sessionUser && active) {
+        const role = sessionUser.user_metadata?.role;
+        if (role === 'teacher') {
+          setView('tutor_dashboard');
+        } else {
+          const normalized = (
+            sessionUser.user_metadata?.username ||
+            (sessionUser.email || '').split('@')[0] ||
+            ''
+          ).toLowerCase();
+          setUserName(normalized);
+          setView('dashboard');
+        }
       } else if (sessionUser && active) {
         // If user confirmed email via link, start onboarding when no saved profile exists
         const role = sessionUser.user_metadata?.role;
