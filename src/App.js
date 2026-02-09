@@ -208,6 +208,19 @@ export default function App() {
   };
 
   useEffect(() => {
+    const token = getInviteToken();
+    if (!token) return;
+    let active = true;
+    (async () => {
+      const teacherUserId = await redeemTeacherInvite(token);
+      if (!teacherUserId || !active) return;
+      const name = await getTeacherNameByUserId(teacherUserId);
+      if (name && active) setInviteTeacherName(name);
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     const savedData = localStorage.getItem(STORAGE_KEY);
     if (savedData) {
       const parsed = JSON.parse(savedData);
@@ -923,19 +936,6 @@ export default function App() {
       // no-op
     }
   };
-
-  useEffect(() => {
-    const token = getInviteToken();
-    if (!token) return;
-    let active = true;
-    (async () => {
-      const teacherUserId = await redeemTeacherInvite(token);
-      if (!teacherUserId || !active) return;
-      const name = await getTeacherNameByUserId(teacherUserId);
-      if (name && active) setInviteTeacherName(name);
-    })();
-    return () => { active = false; };
-  }, []);
 
   if (loading) return null;
 
