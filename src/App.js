@@ -1663,6 +1663,7 @@ export default function App() {
 // Minimal TutorDashboard subcomponent within the same file for consistency
 function TutorDashboard({ onLogout }) {
     const [searchQuery, setSearchQuery] = useState('');
+  const [teacherName, setTeacherName] = useState('');
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [expandedQuiz, setExpandedQuiz] = useState(null);
     const [inviteLink, setInviteLink] = useState('');
@@ -1682,6 +1683,14 @@ function TutorDashboard({ onLogout }) {
             const list = await getTeacherStudents();
             if (active) setStudents(list);
         })();
+      (async () => {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user;
+        if (user) {
+          const name = user.user_metadata?.username || (user.email || '').split('@')[0] || '';
+          if (active) setTeacherName(name);
+        }
+      })();
         return () => { active = false; };
     }, []);
     
@@ -1873,10 +1882,10 @@ function TutorDashboard({ onLogout }) {
 
     return (
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
-        <div className="flex justify-between items-start mb-10 px-2">
+          <div className="flex justify-between items-start mb-10 px-2">
             <div>
-               <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Classroom</h1>
-               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Active Students Management</p>
+               <h1 className="text-2xl font-black text-white uppercase tracking-tighter">{teacherName ? `Tutor ${teacherName}` : 'Tutor'}</h1>
+               <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest opacity-60">Welcome to your classroom</p>
             </div>
             <div className="flex items-center gap-2">
                 <button
