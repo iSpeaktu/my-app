@@ -209,6 +209,7 @@ export default function App() {
 
   useEffect(() => {
     const token = getInviteToken();
+    if (token) localStorage.setItem('ispeaktu_invite_token', token);
     if (!token) return;
     let active = true;
     (async () => {
@@ -259,6 +260,19 @@ export default function App() {
         setStreakState(currentStreakState);
         setSettings(parsed.settings || settings);
         setView('dashboard');
+      } else if (sessionUser && active) {
+        // If user confirmed email via link, start onboarding when no saved profile exists
+        const role = sessionUser.user_metadata?.role;
+        if (role !== 'teacher') {
+          const normalized = (
+            sessionUser.user_metadata?.username ||
+            (sessionUser.email || '').split('@')[0] ||
+            ''
+          ).toLowerCase();
+          setUserName(normalized);
+          persistData({ userName: normalized, displayName: sessionUser.user_metadata?.username || null, onboardingData, streakState });
+          setView('ob_screen1');
+        }
       }
       if (active) setLoading(false);
     })();
@@ -942,6 +956,9 @@ export default function App() {
     }
   };
 
+  const getStoredInviteToken = () => localStorage.getItem('ispeaktu_invite_token') || null;
+  const clearStoredInviteToken = () => localStorage.removeItem('ispeaktu_invite_token');
+
   const clearInviteToken = () => {
     try {
       const url = new URL(window.location.href);
@@ -1062,13 +1079,14 @@ export default function App() {
                       setLoginLoading(false);
                       return;
                     }
-                    const inviteToken = getInviteToken();
+                    const inviteToken = getInviteToken() || getStoredInviteToken();
                     if (inviteToken) {
                       try {
                         const teacherUserId = await redeemTeacherInvite(inviteToken);
                         if (teacherUserId) {
                           await assignStudentToTeacher(user.id, teacherUserId, loginEmail);
                           clearInviteToken();
+                          clearStoredInviteToken();
                         }
                       } catch (e) {
                         console.error('Invite assign failed:', e);
@@ -1334,13 +1352,14 @@ export default function App() {
                           setLoginLoading(false);
                           return;
                         }
-                        const inviteToken = getInviteToken();
+                        const inviteToken = getInviteToken() || getStoredInviteToken();
                         if (inviteToken) {
                           try {
                             const teacherUserId = await redeemTeacherInvite(inviteToken);
                             if (teacherUserId) {
                               await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
                               clearInviteToken();
+                              clearStoredInviteToken();
                             }
                           } catch (e) {
                             console.error('Invite assign failed:', e);
