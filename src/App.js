@@ -1041,6 +1041,18 @@ export default function App() {
         }
         .animate-swing { animation: swing 2s ease infinite; }
       `}</style>
+      {/* Invite confirmation modal - shown when an invite exists but is not yet confirmed */}
+      {inviteTeacherName && !inviteConfirmed && getStoredInviteToken() && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6">
+          <div className="max-w-lg w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl p-6 text-center">
+            <h3 className="text-xl font-extrabold mb-2">Confirm Teacher Invitation</h3>
+            <p className="text-white/70 mb-4">You were invited to join <strong className="text-[#00F2FF]">{inviteTeacherName}</strong>.</p>
+            <button onClick={confirmInvite} className="w-full px-6 py-3 rounded-xl bg-[#00F2FF] text-[#0A0A0C] font-bold text-lg mb-3">Confirm</button>
+            <button onClick={cancelInvite} className="w-full text-red-500 font-bold bg-transparent py-2">Cancel</button>
+            <p className="text-xs text-white/50 mt-3">If this is not your teacher, do not accept. Only accept invitations from your teacher.</p>
+          </div>
+        </div>
+      )}
       
       {view === 'login' && (
         <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in duration-700">
