@@ -255,6 +255,22 @@ export const getTeacherStudents = async () => {
   }
 };
 
+export const getTeacherNameByUserId = async (teacherUserId) => {
+  try {
+    if (!teacherUserId) return null;
+    const { data, error } = await supabase
+      .from('teachers')
+      .select('display_name,name')
+      .eq('user_id', teacherUserId)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.display_name || data?.name || null;
+  } catch (err) {
+    console.error('getTeacherNameByUserId error:', err);
+    return null;
+  }
+};
+
 // --- TEACHER EMAIL/PASSWORD AUTH (email-only) ---
 export const teacherAuthSignUp = async (email, password, displayName) => {
   try {
