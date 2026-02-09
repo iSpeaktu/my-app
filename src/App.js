@@ -1142,7 +1142,12 @@ export default function App() {
                         }
                         setView('tutor_dashboard');
                       } catch (err) {
-                        setLoginError(err.message || 'Signup failed');
+                        const msg = (err?.message || '').toLowerCase();
+                        if (msg.includes('rate limit') || msg.includes('rate-limit')) {
+                          setLoginError('Too many sign-up attempts. Please wait a bit and try again.');
+                        } else {
+                          setLoginError(err.message || 'Signup failed');
+                        }
                       } finally { setLoginLoading(false); }
                     }}
                     disabled={loginLoading}
@@ -1228,7 +1233,12 @@ export default function App() {
                         persistData({ userName: normalized, displayName: fullName, onboardingData, streakState });
                         setView('ob_screen1');
                       } catch (err) {
-                        setLoginError(err.message || 'Signup failed');
+                        const msg = (err?.message || '').toLowerCase();
+                        if (msg.includes('rate limit') || msg.includes('rate-limit')) {
+                          setLoginError('Too many sign-up attempts. Please wait a bit and try again.');
+                        } else {
+                          setLoginError(err.message || 'Signup failed');
+                        }
                       } finally { setLoginLoading(false); }
                     }}
                     disabled={loginLoading}
