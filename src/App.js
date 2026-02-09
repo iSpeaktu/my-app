@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, getAllStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
+import { supabase, studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, getAllStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -174,6 +174,7 @@ export default function App() {
   const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
+  const [loginNotice, setLoginNotice] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -970,6 +971,12 @@ export default function App() {
                     }
 
                     const user = await studentAuthSignIn(loginEmail, password);
+                    if (user?.user_metadata?.role === 'teacher') {
+                      await supabase.auth.signOut();
+                      setLoginError('Teacher accounts must sign in under "I am a Tutor"');
+                      setLoginLoading(false);
+                      return;
+                    }
                     const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || loginEmail).toLowerCase();
                     setUserName(normalized);
                     const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
@@ -1023,6 +1030,11 @@ export default function App() {
                     {loginError}
                   </div>
                 )}
+                {loginNotice && (
+                  <div className="bg-[#00F2FF]/10 border border-[#00F2FF] text-[#00F2FF] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginNotice}
+                  </div>
+                )}
                 <div className="relative group">
                    <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
@@ -1057,7 +1069,7 @@ export default function App() {
                     Sign up
                   </button>
                 </div>
-                <button onClick={() => { setView('login'); setLoginError(''); }} disabled={loginLoading} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">Back to Student Login</button>
+                <button onClick={() => { setView('login'); setLoginError(''); setLoginNotice(''); }} disabled={loginLoading} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">Back to Student Login</button>
             </div>
         </div>
       )}
@@ -1072,6 +1084,11 @@ export default function App() {
                 {loginError && (
                   <div className="bg-[#FF2E63]/10 border border-[#FF2E63] text-[#FF2E63] px-4 py-3 rounded-lg text-sm font-semibold">
                     {loginError}
+                  </div>
+                )}
+                {loginNotice && (
+                  <div className="bg-[#00F2FF]/10 border border-[#00F2FF] text-[#00F2FF] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginNotice}
                   </div>
                 )}
 
@@ -1108,14 +1125,21 @@ export default function App() {
                 <div className="flex gap-2">
                   <button 
                     onClick={async () => {
-                      if (!fullName) { setLoginError('Enter your full name'); return; }
-                      if (!email || !password) { setLoginError('Enter email and password'); return; }
-                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
-                      if (password.length < 6) { setLoginError('Password must be at least 6 characters'); return; }
+                      if (!fullName) { setLoginError('Enter your full name'); setLoginNotice(''); return; }
+                      if (!email || !password) { setLoginError('Enter email and password'); setLoginNotice(''); return; }
+                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); setLoginNotice(''); return; }
+                      if (password.length < 6) { setLoginError('Password must be at least 6 characters'); setLoginNotice(''); return; }
                       try {
                         setLoginLoading(true);
                         setLoginError('');
+                        setLoginNotice('');
                         await teacherAuthSignUp(email.toLowerCase(), password, fullName);
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        if (!sessionData?.session) {
+                          setLoginNotice('Check your email to confirm your account before signing in.');
+                          setLoginLoading(false);
+                          return;
+                        }
                         setView('tutor_dashboard');
                       } catch (err) {
                         setLoginError(err.message || 'Signup failed');
@@ -1127,7 +1151,7 @@ export default function App() {
                     {loginLoading ? 'Signing up...' : 'Sign up'}
                   </button>
 
-                  <button onClick={() => { setView('tutor_login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                  <button onClick={() => { setView('tutor_login'); setLoginError(''); setLoginNotice(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
                 </div>
             </div>
         </div>
@@ -1145,6 +1169,11 @@ export default function App() {
                     {loginError}
                   </div>
                 )}
+                {loginNotice && (
+                  <div className="bg-[#00F2FF]/10 border border-[#00F2FF] text-[#00F2FF] px-4 py-3 rounded-lg text-sm font-semibold">
+                    {loginNotice}
+                  </div>
+                )}
 
                 <div className="relative group">
                    <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={20} />
@@ -1179,14 +1208,21 @@ export default function App() {
                 <div className="flex gap-2">
                   <button 
                     onClick={async () => {
-                      if (!fullName) { setLoginError('Enter your full name'); return; }
-                      if (!email || !password) { setLoginError('Enter email and password'); return; }
-                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); return; }
-                      if (password.length < 6) { setLoginError('Password must be at least 6 characters'); return; }
+                      if (!fullName) { setLoginError('Enter your full name'); setLoginNotice(''); return; }
+                      if (!email || !password) { setLoginError('Enter email and password'); setLoginNotice(''); return; }
+                      if (!isValidEmail(email)) { setLoginError('Enter a valid email address'); setLoginNotice(''); return; }
+                      if (password.length < 6) { setLoginError('Password must be at least 6 characters'); setLoginNotice(''); return; }
                       try {
                         setLoginLoading(true);
                         setLoginError('');
+                        setLoginNotice('');
                         const user = await studentAuthSignUp(email.toLowerCase(), password, fullName);
+                        const { data: sessionData } = await supabase.auth.getSession();
+                        if (!sessionData?.session) {
+                          setLoginNotice('Check your email to confirm your account before signing in.');
+                          setLoginLoading(false);
+                          return;
+                        }
                         const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
                         setUserName(normalized);
                         persistData({ userName: normalized, displayName: fullName, onboardingData, streakState });
@@ -1201,7 +1237,7 @@ export default function App() {
                     {loginLoading ? 'Signing up...' : 'Sign up'}
                   </button>
 
-                  <button onClick={() => { setView('login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                  <button onClick={() => { setView('login'); setLoginError(''); setLoginNotice(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
                 </div>
             </div>
         </div>

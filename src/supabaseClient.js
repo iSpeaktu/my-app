@@ -265,9 +265,9 @@ const generateInviteToken = () => {
 
 export const createTeacherInvite = async () => {
   try {
-    const { data: userData, error: userErr } = await supabase.auth.getUser();
-    if (userErr) throw userErr;
-    const userId = userData?.user?.id;
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr) throw sessionErr;
+    const userId = sessionData?.session?.user?.id;
     if (!userId) throw new Error('Not authenticated');
 
     const token = generateInviteToken();
