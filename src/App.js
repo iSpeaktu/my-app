@@ -221,33 +221,48 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const savedData = localStorage.getItem(STORAGE_KEY);
-    if (savedData) {
-      const parsed = JSON.parse(savedData);
-      if (parsed.userName) {
+    let active = true;
+    (async () => {
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      const parsed = savedData ? JSON.parse(savedData) : null;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user;
+
+      let allowRestore = true;
+      if (sessionUser && parsed?.userName) {
+        const sessionName =
+          (sessionUser.user_metadata?.username ||
+            (sessionUser.email || '').split('@')[0] ||
+            '')
+            .toLowerCase();
+        allowRestore = parsed.userName.toLowerCase() === sessionName;
+      }
+
+      if (parsed?.userName && allowRestore && active) {
         const normalizedUserName = parsed.userName.toLowerCase();
         setUserName(normalizedUserName);
         setOnboardingData(rehydrateOnboardingData(parsed.onboardingData));
-        
+
         let currentStreakState = parsed.streakState || streakState;
         const now = new Date();
         const lastReset = new Date(currentStreakState.lastResetDate);
         const diffInDays = (now - lastReset) / (1000 * 60 * 60 * 24);
-        
+
         if (diffInDays >= 7) {
-            currentStreakState = {
-                ...currentStreakState,
-                weeklyActivityCount: 0,
-                lastResetDate: now.toISOString()
-            };
+          currentStreakState = {
+            ...currentStreakState,
+            weeklyActivityCount: 0,
+            lastResetDate: now.toISOString()
+          };
         }
-        
+
         setStreakState(currentStreakState);
         setSettings(parsed.settings || settings);
         setView('dashboard');
       }
-    }
-    setLoading(false);
+      if (active) setLoading(false);
+    })();
+    return () => { active = false; };
   }, []);
 
   const persistData = (updates) => {
@@ -1060,6 +1075,10 @@ export default function App() {
                       }
                     }
                     const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || loginEmail).toLowerCase();
+                    const currentData = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+                    if (currentData.userName && currentData.userName.toLowerCase() !== normalized) {
+                      localStorage.removeItem(STORAGE_KEY);
+                    }
                     setUserName(normalized);
                     const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
                     if (saved) {
