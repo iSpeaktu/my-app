@@ -124,6 +124,31 @@ export const studentAuthSignIn = async (email, password) => {
     if (!email || !password) throw new Error('Email and password required');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    // Ensure a students row exists after sign-in (when email confirmation is enabled)
+    try {
+      const userId = data?.user?.id || null;
+      if (userId) {
+        const { data: existing, error: fetchErr } = await supabase
+          .from('students')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!existing) {
+          const fallbackName = (data?.user?.user_metadata?.username || (data?.user?.email || '').split('@')[0] || '').toLowerCase();
+          await supabase.from('students').insert([{
+            user_id: userId,
+            name: fallbackName || null,
+            email: data?.user?.email || null,
+            display_name: data?.user?.user_metadata?.username || null,
+            created_at: new Date(),
+            is_guest: false
+          }]);
+        }
+      }
+    } catch (insertErr) {
+      console.error('Failed to ensure students row after sign-in:', insertErr);
+    }
     return data.user;
   } catch (err) {
     console.error('studentAuthSignIn error:', err);
@@ -320,6 +345,27 @@ export const teacherAuthSignIn = async (email, password) => {
     if (!email || !password) throw new Error('Email and password required');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    // Ensure a teachers row exists after sign-in (when email confirmation is enabled)
+    try {
+      const userId = data?.user?.id || null;
+      if (userId) {
+        const { data: existing, error: fetchErr } = await supabase
+          .from('teachers')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (fetchErr) throw fetchErr;
+        if (!existing) {
+          await supabase.from('teachers').insert([{
+            user_id: userId,
+            display_name: data?.user?.user_metadata?.username || null,
+            created_at: new Date()
+          }]);
+        }
+      }
+    } catch (insertErr) {
+      console.error('Failed to ensure teachers row after sign-in:', insertErr);
+    }
     return data.user;
   } catch (err) {
     console.error('teacherAuthSignIn error:', err);
