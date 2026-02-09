@@ -31,9 +31,14 @@ const generateTeacherCode = () => {
 const ensureTeacherProfile = async (user, displayName) => {
   try {
     const userId = user?.id || null;
-    if (!userId) return;
+    if (!userId) {
+      console.warn('No user ID available for teacher profile');
+      return;
+    }
     
     const display = displayName || user?.user_metadata?.display_name || user?.user_metadata?.username || null;
+    
+    // Check if teacher record already exists
     const { data: existing, error: fetchErr } = await supabase
       .from('teachers')
       .select('id, code, display_name')
@@ -45,7 +50,7 @@ const ensureTeacherProfile = async (user, displayName) => {
       throw fetchErr;
     }
 
-    // If teacher exists with code but no display_name, update it
+    // If teacher exists with code, update display_name if needed
     if (existing?.id && existing?.code) {
       if (!existing.display_name && display) {
         const { error: updateErr } = await supabase
@@ -54,6 +59,7 @@ const ensureTeacherProfile = async (user, displayName) => {
           .eq('id', existing.id);
         if (updateErr) console.error('Error updating teacher display_name:', updateErr);
       }
+      console.log('Teacher already exists:', existing.id);
       return;
     }
 
@@ -62,17 +68,20 @@ const ensureTeacherProfile = async (user, displayName) => {
       const code = generateTeacherCode();
       const payload = {
         user_id: userId,
-        display_name: display,
+        display_name: display || null,
         created_at: new Date().toISOString(),
         code
       };
       
-      const { error: insertErr } = await supabase
+      console.log('Attempting to insert teacher record:', { userId, display_name: display, code });
+      
+      const { data: insertedData, error: insertErr } = await supabase
         .from('teachers')
-        .insert([payload]);
+        .insert([payload])
+        .select();
       
       if (!insertErr) {
-        console.log('Teacher record created successfully:', { userId, display_name: display });
+        console.log('✓ Teacher record created successfully:', insertedData);
         return;
       }
       
@@ -84,13 +93,13 @@ const ensureTeacherProfile = async (user, displayName) => {
       }
       
       // Other errors should be thrown
-      console.error('Failed to insert teacher record:', insertErr);
+      console.error('✗ Failed to insert teacher record:', { code: insertErr?.code, message: insertErr?.message });
       throw insertErr;
     }
     
     throw new Error('Failed to allocate unique teacher code after 5 attempts');
   } catch (err) {
-    console.error('Failed to ensure teachers row:', err);
+    console.error('✗ Failed to ensure teachers row:', err);
     throw err;
   }
 };
