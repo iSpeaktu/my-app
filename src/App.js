@@ -993,6 +993,19 @@ export default function App() {
     }
   };
 
+  const confirmInvite = () => {
+    const token = getStoredInviteToken();
+    if (!token) return;
+    setInviteConfirmedValue(true);
+  };
+
+  const cancelInvite = () => {
+    clearInviteToken();
+    clearStoredInviteToken();
+    setInviteConfirmedValue(false);
+    setInviteTeacherName('');
+  };
+
   if (loading) return null;
 
   const handleTeacherLogin = async () => {
