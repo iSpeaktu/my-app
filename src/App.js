@@ -680,9 +680,36 @@ export default function App() {
       { id: 8, name: "Ultimate Sage", desc: "Complete 100 lessons", icon: BrainCircuit, achieved: uniquePassedCount >= 100 },
     ];
 
+    useEffect(() => {
+      let active = true;
+      (async () => {
+        if (studentTeacherName) return;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+        const { data: studentRow } = await supabase
+          .from('students')
+          .select('teacher_user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        const teacherUserId = studentRow?.teacher_user_id;
+        if (!teacherUserId) return;
+        const name = await getTeacherNameByUserId(teacherUserId);
+        if (name && active) setStudentTeacherName(name);
+      })();
+      return () => { active = false; };
+    }, []);
+
     return (
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
         <Header title="View Progress" subtitle="Tracking your mastery" />
+
+        {studentTeacherName && (
+          <div className="mb-6 p-4 bg-[#00F2FF10] border border-[#00F2FF40] rounded-2xl text-white">
+            <div className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-1">Your Teacher</div>
+            <div className="text-sm font-bold">{studentTeacherName}</div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4 mb-8">
            <div className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl">
@@ -959,6 +986,16 @@ export default function App() {
                 {loginError}
               </div>
             )}
+            {loginNotice && (
+              <div className="bg-[#00F2FF]/10 border border-[#00F2FF] text-[#00F2FF] px-4 py-3 rounded-lg text-sm font-semibold">
+                {loginNotice}
+              </div>
+            )}
+            {inviteTeacherName && (
+              <div className="bg-[#00F2FF10] border border-[#00F2FF40] text-white px-4 py-3 rounded-lg text-sm font-semibold">
+                Joining teacher <span className="text-[#00F2FF]">{inviteTeacherName}</span>
+              </div>
+            )}
 
             {/* Full name removed from login form: signup will prompt for name separately */}
 
@@ -1078,6 +1115,11 @@ export default function App() {
                 {loginNotice && (
                   <div className="bg-[#00F2FF]/10 border border-[#00F2FF] text-[#00F2FF] px-4 py-3 rounded-lg text-sm font-semibold">
                     {loginNotice}
+                  </div>
+                )}
+                {inviteTeacherName && (
+                  <div className="bg-[#00F2FF10] border border-[#00F2FF40] text-white px-4 py-3 rounded-lg text-sm font-semibold">
+                    Joining teacher <span className="text-[#00F2FF]">{inviteTeacherName}</span>
                   </div>
                 )}
                 <div className="relative group">
