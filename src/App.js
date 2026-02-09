@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, getAllStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
+import { supabase, studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -879,6 +879,14 @@ export default function App() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
   };
 
+  const getInviteToken = () => {
+    try {
+      return new URLSearchParams(window.location.search).get('invite');
+    } catch {
+      return null;
+    }
+  };
+
   const handleTeacherLogin = async () => {
     if (!email) { setLoginError('Enter email'); return; }
     if (!password) { setLoginError('Enter password'); return; }
@@ -976,6 +984,17 @@ export default function App() {
                       setLoginError('Teacher accounts must sign in under "I am a Tutor"');
                       setLoginLoading(false);
                       return;
+                    }
+                    const inviteToken = getInviteToken();
+                    if (inviteToken) {
+                      try {
+                        const teacherUserId = await redeemTeacherInvite(inviteToken);
+                        if (teacherUserId) {
+                          await assignStudentToTeacher(user.id, teacherUserId, loginEmail);
+                        }
+                      } catch (e) {
+                        console.error('Invite assign failed:', e);
+                      }
                     }
                     const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || loginEmail).toLowerCase();
                     setUserName(normalized);
@@ -1227,6 +1246,17 @@ export default function App() {
                           setLoginNotice('Check your email to confirm your account before signing in.');
                           setLoginLoading(false);
                           return;
+                        }
+                        const inviteToken = getInviteToken();
+                        if (inviteToken) {
+                          try {
+                            const teacherUserId = await redeemTeacherInvite(inviteToken);
+                            if (teacherUserId) {
+                              await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
+                            }
+                          } catch (e) {
+                            console.error('Invite assign failed:', e);
+                          }
                         }
                         const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
                         setUserName(normalized);
@@ -1480,6 +1510,7 @@ function TutorDashboard({ onLogout }) {
     const [inviteLink, setInviteLink] = useState('');
     const [inviteError, setInviteError] = useState('');
     const [inviteLoading, setInviteLoading] = useState(false);
+    const [students, setStudents] = useState([]);
     const [reminders, setReminders] = useState(() => 
       JSON.parse(localStorage.getItem('ispeaktu_tutor_reminders') || '{}')
     );
@@ -1487,7 +1518,14 @@ function TutorDashboard({ onLogout }) {
       JSON.parse(localStorage.getItem('ispeaktu_tutor_praise') || '{}')
     );
     
-    const students = JSON.parse(localStorage.getItem('ispeaktu_all_students') || '[]');
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            const list = await getTeacherStudents();
+            if (active) setStudents(list);
+        })();
+        return () => { active = false; };
+    }, []);
     
     const filteredStudents = students.filter(s => 
         s.name.toLowerCase().includes(searchQuery.toLowerCase())

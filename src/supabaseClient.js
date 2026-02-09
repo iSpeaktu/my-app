@@ -144,10 +144,11 @@ export const studentAuthSignUp = async (email, password, username) => {
     if (error) throw error;
     // After successful signup, ensure a students row exists
     try {
+      const userId = data?.user?.id || null;
       const normalized = (username || email.split('@')[0]).toLowerCase();
       // Upsert so we don't create duplicates and preserve the display name from signup
       await supabase.from('students').upsert([
-        { name: normalized, email, display_name: username || null, created_at: new Date() }
+        { user_id: userId, name: normalized, email, display_name: username || null, created_at: new Date() }
       ], { onConflict: 'name' });
     } catch (insertErr) {
       console.error('Failed to upsert students row after signup:', insertErr);
@@ -193,6 +194,64 @@ export const studentAuthResetPassword = async (email, redirectTo) => {
   } catch (err) {
     console.error('studentAuthResetPassword error:', err);
     throw err;
+  }
+};
+
+export const assignStudentToTeacher = async (userId, teacherUserId, email) => {
+  try {
+    if (!userId || !teacherUserId) throw new Error('User and teacher required');
+    let { data, error } = await supabase
+      .from('students')
+      .update({ teacher_user_id: teacherUserId, user_id: userId, is_guest: false })
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    if (!data && email) {
+      const res = await supabase
+        .from('students')
+        .update({ teacher_user_id: teacherUserId, user_id: userId, is_guest: false })
+        .eq('email', email)
+        .select()
+        .maybeSingle();
+      if (res.error) throw res.error;
+      data = res.data;
+    }
+    return data;
+  } catch (err) {
+    console.error('assignStudentToTeacher error:', err);
+    throw err;
+  }
+};
+
+export const getTeacherStudents = async () => {
+  try {
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr) throw sessionErr;
+    const userId = sessionData?.session?.user?.id;
+    if (!userId) return [];
+    const { data: students, error } = await supabase
+      .from('students')
+      .select('*')
+      .eq('teacher_user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (students || []).map(s => {
+      const display = s.display_name || s.displayName || s.name || (s.email ? s.email.split('@')[0] : '');
+      return {
+        ...s,
+        name: display,
+        progress: s.progress || 'Beginner',
+        lastScore: typeof s.lastScore === 'number' ? s.lastScore : 0,
+        lastLessonId: s.lastLessonId || 1,
+        lastMaterialId: s.lastMaterialId || null,
+        lastLevel: s.lastLevel || null,
+        history: Array.isArray(s.history) ? s.history : []
+      };
+    });
+  } catch (err) {
+    console.error('getTeacherStudents error:', err);
+    return [];
   }
 };
 
