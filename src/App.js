@@ -319,7 +319,10 @@ export default function App() {
         name: displayName,
         xp: history.filter(h => h.passed).length * 10, // XP rule: +10 per passed lesson
         streak: newData.streakState?.weeklyStreak || 0,
-        progress: newData.onboardingData?.level || 'Beginner',
+        // Do not assign a default track for users who don't have one yet.
+        // If onboardingData.level is set use it, otherwise only default to 'Beginner'
+        // when a material exists; leave empty when no track chosen (invited users).
+        progress: newData.onboardingData?.level ? newData.onboardingData.level : (newData.onboardingData?.material ? 'Beginner' : ''),
         lastScore: lastHistItem ? lastHistItem.score : 0,
         lastLessonId: lastHistItem ? lastHistItem.lessonId : 1,
         lastMaterialId: lastHistItem ? lastHistItem.material : null,
@@ -1403,11 +1406,13 @@ export default function App() {
                           return;
                         }
                         const inviteToken = getInviteToken() || getStoredInviteToken();
+                        let assignedStudentRow = null;
                         if (inviteToken && getInviteConfirmed()) {
                           try {
                             const teacherUserId = await redeemTeacherInvite(inviteToken);
                             if (teacherUserId) {
-                              await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
+                              // Capture any existing student row returned by the assign call
+                              assignedStudentRow = await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
                               clearInviteToken();
                               clearStoredInviteToken();
                               setInviteConfirmedValue(false);
@@ -1416,10 +1421,29 @@ export default function App() {
                             console.error('Invite assign failed:', e);
                           }
                         }
+
                         const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
                         setUserName(normalized);
-                        persistData({ userName: normalized, displayName: fullName, onboardingData, streakState });
-                        setView('ob_screen1');
+
+                        // If the DB returned a student row with a saved track, keep it.
+                        let finalOnboarding = onboardingData;
+                        if (assignedStudentRow && (assignedStudentRow.material || assignedStudentRow.level)) {
+                          const mat = MATERIALS_DATA.find(m => m.id === assignedStudentRow.material) || null;
+                          finalOnboarding = {
+                            material: mat,
+                            level: assignedStudentRow.level || null,
+                            lessonsPerWeek: assignedStudentRow.lessonsPerWeek || onboardingData.lessonsPerWeek
+                          };
+                          setOnboardingData(finalOnboarding);
+                          persistData({ userName: normalized, displayName: fullName, onboardingData: finalOnboarding, streakState });
+                          // Already has a track — send to dashboard with preserved track
+                          setView('dashboard');
+                        } else {
+                          // No existing track: ensure user goes through onboarding (no default track assigned)
+                          setOnboardingData({ material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek });
+                          persistData({ userName: normalized, displayName: fullName, onboardingData: { material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek }, streakState });
+                          setView('ob_screen1');
+                        }
                       } catch (err) {
                         const msg = (err?.message || '').toLowerCase();
                         if (msg.includes('rate limit') || msg.includes('rate-limit')) {
