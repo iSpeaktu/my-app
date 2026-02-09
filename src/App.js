@@ -887,6 +887,16 @@ export default function App() {
     }
   };
 
+  const clearInviteToken = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('invite');
+      window.history.replaceState({}, document.title, url.toString());
+    } catch {
+      // no-op
+    }
+  };
+
   const handleTeacherLogin = async () => {
     if (!email) { setLoginError('Enter email'); return; }
     if (!password) { setLoginError('Enter password'); return; }
@@ -991,6 +1001,7 @@ export default function App() {
                         const teacherUserId = await redeemTeacherInvite(inviteToken);
                         if (teacherUserId) {
                           await assignStudentToTeacher(user.id, teacherUserId, loginEmail);
+                          clearInviteToken();
                         }
                       } catch (e) {
                         console.error('Invite assign failed:', e);
@@ -1253,6 +1264,7 @@ export default function App() {
                             const teacherUserId = await redeemTeacherInvite(inviteToken);
                             if (teacherUserId) {
                               await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
+                              clearInviteToken();
                             }
                           } catch (e) {
                             console.error('Invite assign failed:', e);
