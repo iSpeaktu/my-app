@@ -179,6 +179,8 @@ export default function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [inviteTeacherName, setInviteTeacherName] = useState('');
+  const [studentTeacherName, setStudentTeacherName] = useState('');
   
   const [onboardingData, setOnboardingData] = useState({
     material: null,
