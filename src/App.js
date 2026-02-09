@@ -603,6 +603,26 @@ export default function App() {
   const ProgressView = () => {
     const [showMastered, setShowMastered] = useState(true);
     const [activeTerm, setActiveTerm] = useState(null);
+
+    useEffect(() => {
+      let active = true;
+      (async () => {
+        if (studentTeacherName) return;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+        const { data: studentRow } = await supabase
+          .from('students')
+          .select('teacher_user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        const teacherUserId = studentRow?.teacher_user_id;
+        if (!teacherUserId) return;
+        const name = await getTeacherNameByUserId(teacherUserId);
+        if (name && active) setStudentTeacherName(name);
+      })();
+      return () => { active = false; };
+    }, []);
     const masteredVocab = new Set();
     const masteredGrammar = new Set();
     const upcomingVocab = new Set();
@@ -679,26 +699,6 @@ export default function App() {
       { id: 7, name: "Language Legend", desc: "Complete 60 lessons", icon: Trophy, achieved: uniquePassedCount >= 60 },
       { id: 8, name: "Ultimate Sage", desc: "Complete 100 lessons", icon: BrainCircuit, achieved: uniquePassedCount >= 100 },
     ];
-
-    useEffect(() => {
-      let active = true;
-      (async () => {
-        if (studentTeacherName) return;
-        const { data: sessionData } = await supabase.auth.getSession();
-        const userId = sessionData?.session?.user?.id;
-        if (!userId) return;
-        const { data: studentRow } = await supabase
-          .from('students')
-          .select('teacher_user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        const teacherUserId = studentRow?.teacher_user_id;
-        if (!teacherUserId) return;
-        const name = await getTeacherNameByUserId(teacherUserId);
-        if (name && active) setStudentTeacherName(name);
-      })();
-      return () => { active = false; };
-    }, []);
 
     return (
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
@@ -872,8 +872,6 @@ export default function App() {
     </div>
   );
 
-  if (loading) return null;
-
   const login = async (name) => {
     // Email/password only login (name-based login removed)
     if (!email || !password) {
@@ -938,6 +936,8 @@ export default function App() {
     })();
     return () => { active = false; };
   }, []);
+
+  if (loading) return null;
 
   const handleTeacherLogin = async () => {
     if (!email) { setLoginError('Enter email'); return; }
