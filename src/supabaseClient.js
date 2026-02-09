@@ -481,3 +481,134 @@ export const redeemTeacherInvite = async (token) => {
     throw err;
   }
 };
+
+// --- LESSON HISTORY & STUDENT DATA ---
+export const recordLessonHistory = async (studentUserId, lessonId, score, passed, failures = []) => {
+  try {
+    if (!studentUserId) throw new Error('Student user ID required');
+    const { data, error } = await supabase
+      .from('lesson_history')
+      .insert([{
+        student_id: studentUserId,
+        lesson_id: lessonId,
+        score,
+        passed,
+        failures: failures || [],
+        created_at: new Date()
+      }])
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('recordLessonHistory error:', err);
+    throw err;
+  }
+};
+
+export const updateStudentProgress = async (userId, updates) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('students')
+      .update(updates)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('updateStudentProgress error:', err);
+    throw err;
+  }
+};
+
+export const getStudentProgress = async (userId) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('students')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('getStudentProgress error:', err);
+    return null;
+  }
+};
+
+export const getStudentLessonHistory = async (userId) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('lesson_history')
+      .select('*')
+      .eq('student_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('getStudentLessonHistory error:', err);
+    return [];
+  }
+};
+
+// --- NOTIFICATIONS (Reminders & Praise) ---
+export const createNotification = async (recipientUserId, type, senderUserId = null, lessonId = null) => {
+  try {
+    if (!recipientUserId) throw new Error('Recipient user ID required');
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([{
+        recipient_id: recipientUserId,
+        sender_id: senderUserId || null,
+        type: type, // 'remind' or 'praise'
+        lesson_id: lessonId || null,
+        created_at: new Date()
+      }])
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('createNotification error:', err);
+    throw err;
+  }
+};
+
+export const getNotifications = async (userId) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('recipient_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('getNotifications error:', err);
+    return [];
+  }
+};
+
+export const upsertStudentProfile = async (userId, profileData) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('students')
+      .upsert([{
+        user_id: userId,
+        ...profileData
+      }], { onConflict: 'user_id' })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('upsertStudentProfile error:', err);
+    throw err;
+  }
+};

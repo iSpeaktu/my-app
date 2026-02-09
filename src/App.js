@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword } from './supabaseClient';
+import { supabase, studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -298,49 +298,44 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  const persistData = (updates) => {
-    const currentData = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    const newData = { ...currentData, ...updates };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
+  const persistData = async (updates) => {
+    // Get current authenticated user
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    
+    if (!userId) {
+      console.warn('No authenticated user - skipping persistence');
+      return;
+    }
 
-    if (newData.userName) {
-      const normalizedUserName = newData.userName.toLowerCase();
-      localStorage.setItem(`ispeaktu_data_${normalizedUserName}`, JSON.stringify(newData));
-
-      const allStudents = JSON.parse(localStorage.getItem('ispeaktu_all_students') || '[]');
-      const history = newData.streakState?.completedHistory || [];
-      const lastHistItem = history.slice(-1)[0];
-
-      const displayName = newData.displayName || normalizedUserName;
-
-      const studentSummary = {
-        id: normalizedUserName,
-        userName: normalizedUserName,
-        name: displayName,
-        xp: history.filter(h => h.passed).length * 10, // XP rule: +10 per passed lesson
-        streak: newData.streakState?.weeklyStreak || 0,
-        // Do not assign a default track for users who don't have one yet.
-        // If onboardingData.level is set use it, otherwise only default to 'Beginner'
-        // when a material exists; leave empty when no track chosen (invited users).
-        progress: newData.onboardingData?.level ? newData.onboardingData.level : (newData.onboardingData?.material ? 'Beginner' : ''),
-        lastScore: lastHistItem ? lastHistItem.score : 0,
-        lastLessonId: lastHistItem ? lastHistItem.lessonId : 1,
-        lastMaterialId: lastHistItem ? lastHistItem.material : null,
-        lastLevel: lastHistItem ? lastHistItem.level : null,
-        quizzesTaken: history.length,
-        active: true,
-        skills: { 
-          vocabulary: Math.min(100, 50 + (history.filter(h => h.passed).length * 4)), 
-          grammar: Math.min(100, 40 + (history.filter(h => h.passed).length * 5)), 
-          comprehension: Math.min(100, 60 + (history.filter(h => h.passed).length * 3)) 
-        },
-        history
-      };
-
-      const existingIndex = allStudents.findIndex(s => s.userName === normalizedUserName);
-      if (existingIndex >= 0) allStudents[existingIndex] = { ...allStudents[existingIndex], ...studentSummary };
-      else allStudents.push(studentSummary);
-      localStorage.setItem('ispeaktu_all_students', JSON.stringify(allStudents));
+    // Build the profile data to sync with Supabase
+    const profileData = {};
+    
+    // Update onboarding data if provided
+    if (updates.onboardingData) {
+      profileData.current_material_id = updates.onboardingData.material?.id || null;
+      profileData.current_level = updates.onboardingData.level || null;
+      profileData.lessons_per_week = updates.onboardingData.lessonsPerWeek || 3;
+    }
+    
+    // Update streak if provided
+    if (updates.streakState) {
+      profileData.weekly_streak = updates.streakState.weeklyStreak || 0;
+    }
+    
+    // Update display name if provided
+    if (updates.displayName) {
+      profileData.display_name = updates.displayName;
+    }
+    
+    // Sync to Supabase
+    if (Object.keys(profileData).length > 0) {
+      try {
+        await upsertStudentProfile(userId, profileData);
+      } catch (err) {
+        console.error('Failed to persist data to Supabase:', err);
+        // Continue anyway - UI state is still updated locally
+      }
     }
   };
 
@@ -1050,8 +1045,8 @@ export default function App() {
           <div className="max-w-lg w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl p-6 text-center">
             <h3 className="text-xl font-extrabold mb-2">Confirm Teacher Invitation</h3>
             <p className="text-white/70 mb-4">You were invited to join <strong className="text-[#00F2FF]">{inviteTeacherName}</strong>.</p>
-            <button onClick={confirmInvite} className="w-full px-6 py-3 rounded-xl bg-[#00F2FF] text-[#0A0A0C] font-bold text-lg mb-3">Confirm</button>
-            <button onClick={cancelInvite} className="w-full text-red-500 font-bold bg-transparent py-2">Cancel</button>
+            <button onClick={confirmInvite} aria-label="Confirm teacher invitation" className="w-full px-6 py-3 rounded-xl bg-[#00F2FF] text-[#0A0A0C] font-bold text-lg mb-3 focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#16161D] transition-all">Confirm</button>
+            <button onClick={cancelInvite} aria-label="Cancel teacher invitation" className="w-full text-red-500 font-bold bg-transparent py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-[#16161D] rounded transition-all">Cancel</button>
             <p className="text-xs text-white/50 mt-3">If this is not your teacher, do not accept. Only accept invitations from your teacher.</p>
           </div>
         </div>
@@ -1180,11 +1175,11 @@ export default function App() {
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-2">
-              <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              <button onClick={() => { setView('tutor_login'); setLoginError(''); }} disabled={loginLoading} aria-label="Switch to tutor login mode" className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 rounded px-2 py-1">
                  <Icon name="Settings" size={12} />
                  I am a Tutor
               </button>
-              <button onClick={() => { setView('reset'); setLoginError(''); }} className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">
+              <button onClick={() => { setView('reset'); setLoginError(''); }} aria-label="Reset forgotten password" className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-colors disabled:opacity-50 rounded px-2 py-1">
                   Forgot password?
               </button>
             </div>
@@ -1236,19 +1231,21 @@ export default function App() {
                   <button 
                     onClick={handleTeacherLogin}
                     disabled={loginLoading}
-                    className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                    aria-label="Sign in to tutor dashboard"
+                    className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
                   >
                     {loginLoading ? 'Signing in...' : 'Sign in'}
                   </button>
                   <button 
                     onClick={() => { setLoginError(''); setView('tutor_signup'); }}
                     disabled={loginLoading}
-                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                    aria-label="Create a new tutor account"
+                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all disabled:opacity-50"
                   >
                     Sign up
                   </button>
                 </div>
-                <button onClick={() => { setView('login'); setLoginError(''); setLoginNotice(''); }} disabled={loginLoading} className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white transition-colors disabled:opacity-50">Back to Student Login</button>
+                <button onClick={() => { setView('login'); setLoginError(''); setLoginNotice(''); }} disabled={loginLoading} aria-label="Back to student login" className="w-full pt-6 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] rounded px-2 py-1 transition-colors disabled:opacity-50">Back to Student Login</button>
             </div>
         </div>
       )}
@@ -1330,12 +1327,13 @@ export default function App() {
                       } finally { setLoginLoading(false); }
                     }}
                     disabled={loginLoading}
-                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                    aria-label="Create new tutor account"
+                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all disabled:opacity-50"
                   >
                     {loginLoading ? 'Signing up...' : 'Sign up'}
                   </button>
 
-                  <button onClick={() => { setView('tutor_login'); setLoginError(''); setLoginNotice(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                  <button onClick={() => { setView('tutor_login'); setLoginError(''); setLoginNotice(''); }} aria-label="Go back to tutor login" className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A] focus:outline-none focus:ring-2 focus:ring-[#2D2D3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">Back</button>
                 </div>
             </div>
         </div>
@@ -1456,12 +1454,13 @@ export default function App() {
                       } finally { setLoginLoading(false); }
                     }}
                     disabled={loginLoading}
-                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                    aria-label="Create new student account"
+                    className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all disabled:opacity-50"
                   >
                     {loginLoading ? 'Signing up...' : 'Sign up'}
                   </button>
 
-                  <button onClick={() => { setView('login'); setLoginError(''); setLoginNotice(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                  <button onClick={() => { setView('login'); setLoginError(''); setLoginNotice(''); }} aria-label="Go back to student login" className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A] focus:outline-none focus:ring-2 focus:ring-[#2D2D3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">Back</button>
                 </div>
             </div>
         </div>
@@ -1513,12 +1512,13 @@ export default function App() {
                       } finally { setLoginLoading(false); }
                     }}
                     disabled={loginLoading}
-                    className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                    aria-label="Send password reset email"
+                    className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
                   >
                     {loginLoading ? 'Sending...' : 'Send reset email'}
                   </button>
 
-                  <button onClick={() => { setView('login'); setLoginError(''); }} className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A]">Back</button>
+                  <button onClick={() => { setView('login'); setLoginError(''); }} aria-label="Go back to login" className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A] focus:outline-none focus:ring-2 focus:ring-[#2D2D3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">Back</button>
                 </div>
             </div>
         </div>
@@ -1529,8 +1529,8 @@ export default function App() {
       {view === 'ob_screen1' && (
         <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in">
             <h2 className="text-2xl font-bold mb-10 text-center leading-snug">Do you study English with<br/><span className="text-[#00F2FF]">iSpeaktu?</span></h2>
-            <button onClick={() => setView('ob_screen2')} className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-4 font-bold text-lg hover:border-[#00F2FF] transition-all">Yes,</button>
-            <button onClick={() => { persistData({ userName, onboardingData, streakState }); setView('dashboard'); }} className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl font-bold text-lg hover:border-white/20 transition-all">No, I'm self-studying</button>
+            <button onClick={() => setView('ob_screen2')} aria-label="Yes, I study English with iSpeaktu" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-4 font-bold text-lg hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">Yes,</button>
+            <button onClick={() => { persistData({ userName, onboardingData, streakState }); setView('dashboard'); }} aria-label="No, I prefer self-studying" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl font-bold text-lg hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">No, I'm self-studying</button>
         </div>
       )}
 
@@ -1538,7 +1538,7 @@ export default function App() {
         <div className="max-w-md mx-auto py-10 px-8 animate-in slide-in-from-right-10">
             <h2 className="text-2xl font-bold mb-10 text-center">What do you study?</h2>
             {MATERIALS_DATA.map(m => (
-                <button key={m.id} onClick={() => { setOnboardingData({ ...onboardingData, material: m }); setView('ob_screen3'); }} className="w-full p-5 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 flex items-center gap-4 hover:border-[#00F2FF] transition-all">
+                <button key={m.id} onClick={() => { setOnboardingData({ ...onboardingData, material: m }); setView('ob_screen3'); }} aria-label={`Select ${m.title} as your study track`} className="w-full p-5 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 flex items-center gap-4 hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">
                     <div style={{ color: m.color }} className="bg-[#0A0A0C] p-2 rounded-lg"><Icon name={m.icon} style={{ color: m.color }} /></div>
                     <span className="font-bold">{m.title}</span>
                 </button>
@@ -1555,7 +1555,7 @@ export default function App() {
                 setOnboardingData(finalOb); 
                 persistData({ userName, onboardingData: finalOb, streakState }); 
                 setView('dashboard'); 
-              }} className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 font-bold text-lg hover:border-[#00F2FF] transition-all">
+              }} aria-label={`Select ${l} as your level`} className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 font-bold text-lg hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">
                 {l}
               </button>
             ))}
@@ -1973,9 +1973,10 @@ function TutorDashboard({ onLogout }) {
             <input 
                 type="text" 
                 placeholder="Find a student..." 
+                aria-label="Search for a student by name"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl py-4 pl-12 pr-4 text-sm font-bold outline-none focus:border-[#00F2FF40] transition-all placeholder:text-white/10"
+                className="w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl py-4 pl-12 pr-4 text-sm font-bold outline-none focus:border-[#00F2FF] focus:ring-2 focus:ring-[#00F2FF]/20 transition-all placeholder:text-white/10"
             />
         </div>
 
@@ -2005,7 +2006,11 @@ function TutorDashboard({ onLogout }) {
                     <div 
                         key={s.id} 
                         onClick={() => { setSelectedStudent(s); setExpandedQuiz(null); }}
-                        className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-[#00F2FF40] hover:bg-[#1C1C26] transition-all active:scale-[0.99] group"
+                        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && (e.target === e.currentTarget)) { e.preventDefault(); setSelectedStudent(s); setExpandedQuiz(null); } }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`View details for student ${s.name}, ${s.progress} level, ${s.lastScore}% score`}
+                        className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-[#00F2FF40] hover:bg-[#1C1C26] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all active:scale-[0.99] group"
                     >
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-[#0A0A0C] border border-[#2D2D3A] flex items-center justify-center text-white/20 group-hover:text-[#00F2FF] group-hover:border-[#00F2FF20] transition-all">
