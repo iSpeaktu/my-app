@@ -18,6 +18,49 @@ export const supabase = createClient(
   }
 );
 
+const generateTeacherCode = () => {
+  const bytes = new Uint8Array(6);
+  const cryptoObj = (typeof window !== 'undefined' && window.crypto) || null;
+  if (!cryptoObj?.getRandomValues) {
+    throw new Error('Secure random generator not available');
+  }
+  cryptoObj.getRandomValues(bytes);
+  return Array.from(bytes).map(b => (b % 36).toString(36)).join('').toUpperCase();
+};
+
+const ensureTeacherProfile = async (user, displayName) => {
+  try {
+    const userId = user?.id || null;
+    if (!userId) return;
+    const display = displayName || user?.user_metadata?.display_name || user?.user_metadata?.username || null;
+    const { data: existing, error: fetchErr } = await supabase
+      .from('teachers')
+      .select('id, code')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+
+    if (existing?.code) return;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = generateTeacherCode();
+      const payload = existing?.id
+        ? { code }
+        : { user_id: userId, display_name: display, created_at: new Date(), code };
+      const res = existing?.id
+        ? await supabase.from('teachers').update(payload).eq('id', existing.id)
+        : await supabase.from('teachers').insert([payload]);
+      if (!res.error) return;
+      const msg = (res.error?.message || '').toLowerCase();
+      if (res.error?.code === '23505' || msg.includes('duplicate')) continue;
+      throw res.error;
+    }
+    throw new Error('Failed to allocate unique teacher code');
+  } catch (err) {
+    console.error('Failed to ensure teachers row:', err);
+  }
+};
+
 // --- STUDENT LOGIN (by name only) ---
 export const studentLogin = async (studentName) => {
   try {
@@ -311,34 +354,13 @@ export const teacherAuthSignUp = async (email, password, displayName) => {
       email,
       password,
       options: {
-        data: { role: 'teacher' }
+        data: { role: 'teacher', display_name: displayName || null }
       }
     });
     if (error) throw error;
 
     // Insert teacher profile only if missing (avoid overwriting existing data)
-    try {
-      const userId = data?.user?.id || null;
-      if (userId) {
-        const { data: existing, error: fetchErr } = await supabase
-          .from('teachers')
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (fetchErr) throw fetchErr;
-        if (!existing) {
-          const { error: insertErr } = await supabase.from('teachers').insert([{
-            user_id: userId,
-            display_name: displayName || null,
-            created_at: new Date()
-          }]);
-          if (insertErr) throw insertErr;
-        }
-      }
-    } catch (insertErr) {
-      console.error('Failed to insert teachers row after signup:', insertErr);
-      // don't block signup on this error
-    }
+    await ensureTeacherProfile(data?.user, displayName);
 
     return data.user;
   } catch (err) {
@@ -353,26 +375,7 @@ export const teacherAuthSignIn = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     // Ensure a teachers row exists after sign-in (when email confirmation is enabled)
-    try {
-      const userId = data?.user?.id || null;
-      if (userId) {
-        const { data: existing, error: fetchErr } = await supabase
-          .from('teachers')
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (fetchErr) throw fetchErr;
-        if (!existing) {
-          await supabase.from('teachers').insert([{
-            user_id: userId,
-            display_name: data?.user?.user_metadata?.username || null,
-            created_at: new Date()
-          }]);
-        }
-      }
-    } catch (insertErr) {
-      console.error('Failed to ensure teachers row after sign-in:', insertErr);
-    }
+    await ensureTeacherProfile(data?.user, data?.user?.user_metadata?.display_name || null);
     return data.user;
   } catch (err) {
     console.error('teacherAuthSignIn error:', err);

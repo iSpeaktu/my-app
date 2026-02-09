@@ -181,6 +181,7 @@ export default function App() {
   const [fullName, setFullName] = useState('');
   const [inviteTeacherName, setInviteTeacherName] = useState('');
   const [studentTeacherName, setStudentTeacherName] = useState('');
+  const [inviteConfirmed, setInviteConfirmed] = useState(false);
   
   const [onboardingData, setOnboardingData] = useState({
     material: null,
@@ -209,7 +210,11 @@ export default function App() {
 
   useEffect(() => {
     const urlToken = getInviteToken();
-    if (urlToken) localStorage.setItem('ispeaktu_invite_token', urlToken);
+    if (urlToken) {
+      localStorage.setItem('ispeaktu_invite_token', urlToken);
+      localStorage.setItem('ispeaktu_invite_confirmed', 'false');
+      setInviteConfirmed(false);
+    }
     const token = urlToken || getStoredInviteToken();
     if (!token) return;
     let active = true;
@@ -972,6 +977,11 @@ export default function App() {
 
   const getStoredInviteToken = () => localStorage.getItem('ispeaktu_invite_token') || null;
   const clearStoredInviteToken = () => localStorage.removeItem('ispeaktu_invite_token');
+  const getInviteConfirmed = () => localStorage.getItem('ispeaktu_invite_confirmed') === 'true';
+  const setInviteConfirmedValue = (val) => {
+    localStorage.setItem('ispeaktu_invite_confirmed', val ? 'true' : 'false');
+    setInviteConfirmed(!!val);
+  };
 
   const clearInviteToken = () => {
     try {
@@ -1094,13 +1104,14 @@ export default function App() {
                       return;
                     }
                     const inviteToken = getInviteToken() || getStoredInviteToken();
-                    if (inviteToken) {
+                    if (inviteToken && getInviteConfirmed()) {
                       try {
                         const teacherUserId = await redeemTeacherInvite(inviteToken);
                         if (teacherUserId) {
                           await assignStudentToTeacher(user.id, teacherUserId, loginEmail);
                           clearInviteToken();
                           clearStoredInviteToken();
+                          setInviteConfirmedValue(false);
                         }
                       } catch (e) {
                         console.error('Invite assign failed:', e);
@@ -1367,13 +1378,14 @@ export default function App() {
                           return;
                         }
                         const inviteToken = getInviteToken() || getStoredInviteToken();
-                        if (inviteToken) {
+                        if (inviteToken && getInviteConfirmed()) {
                           try {
                             const teacherUserId = await redeemTeacherInvite(inviteToken);
                             if (teacherUserId) {
                               await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
                               clearInviteToken();
                               clearStoredInviteToken();
+                              setInviteConfirmedValue(false);
                             }
                           } catch (e) {
                             console.error('Invite assign failed:', e);
