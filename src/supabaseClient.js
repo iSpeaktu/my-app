@@ -18,16 +18,6 @@ export const supabase = createClient(
   }
 );
 
-const generateTeacherCode = () => {
-  const bytes = new Uint8Array(6);
-  const cryptoObj = (typeof window !== 'undefined' && window.crypto) || null;
-  if (!cryptoObj?.getRandomValues) {
-    throw new Error('Secure random generator not available');
-  }
-  cryptoObj.getRandomValues(bytes);
-  return Array.from(bytes).map(b => (b % 36).toString(36)).join('').toUpperCase();
-};
-
 const ensureTeacherProfile = async (user, displayName) => {
   try {
     const userId = user?.id || null;
@@ -35,75 +25,19 @@ const ensureTeacherProfile = async (user, displayName) => {
       console.warn('No user ID available for teacher profile');
       return;
     }
-    
-    const display = displayName || user?.user_metadata?.display_name || user?.user_metadata?.username || null;
-    
-    // Check if teacher record already exists
-    const { data: existing, error: fetchErr } = await supabase
+
+    const display = displayName || user?.user_metadata?.full_name || user?.user_metadata?.display_name || user?.user_metadata?.username || null;
+
+    const { error } = await supabase
       .from('teachers')
-      .select('id, code, display_name')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    if (fetchErr) {
-      console.error('Error fetching existing teacher:', fetchErr);
-      throw fetchErr;
-    }
+      .upsert([{ id: userId, display_name: display || null }], { onConflict: 'id' });
 
-    // If teacher exists with code, update display_name if needed
-    if (existing?.id && existing?.code) {
-      if (!existing.display_name && display) {
-        const { error: updateErr } = await supabase
-          .from('teachers')
-          .update({ display_name: display })
-          .eq('id', existing.id);
-        if (updateErr) console.error('Error updating teacher display_name:', updateErr);
-      }
-      console.log('Teacher already exists:', existing.id);
-      return;
-    }
-
-    // Try to insert a new teacher record with a unique code
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const code = generateTeacherCode();
-      const payload = {
-        user_id: userId,
-        display_name: display || null,
-        created_at: new Date().toISOString(),
-        code
-      };
-      
-      console.log('Attempting to insert teacher record:', { userId, display_name: display, code });
-      
-      const { data: insertedData, error: insertErr } = await supabase
-        .from('teachers')
-        .insert([payload])
-        .select();
-      
-      if (!insertErr) {
-        console.log('✓ Teacher record created successfully:', insertedData);
-        return;
-      }
-      
-      const msg = (insertErr?.message || '').toLowerCase();
-      // Retry only on duplicate code
-      if (insertErr?.code === '23505' || msg.includes('duplicate')) {
-        console.warn(`Attempt ${attempt + 1}: Duplicate code, retrying...`);
-        continue;
-      }
-      
-      // Other errors should be thrown
-      console.error('✗ Failed to insert teacher record:', { code: insertErr?.code, message: insertErr?.message });
-      throw insertErr;
-    }
-    
-    throw new Error('Failed to allocate unique teacher code after 5 attempts');
+    if (error) throw error;
   } catch (err) {
     console.error('✗ Failed to ensure teachers row:', err);
     throw err;
   }
 };
-
 // --- STUDENT LOGIN (by name only) ---
 export const studentLogin = async (studentName) => {
   try {
@@ -111,39 +45,28 @@ export const studentLogin = async (studentName) => {
       throw new Error('Student name is required');
     }
 
-    // Normalize name to lowercase for case-insensitive matching
     const normalizedName = studentName.trim().toLowerCase();
 
-    // Fetch or create student record using normalized name
-    const { data: existingStudent, error: fetchError } = await supabase
-      .from('students')
-      .select('*')
-      .or(`name.eq.${normalizedName},display_name.eq.${normalizedName}`)
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id, username, full_name, role')
+      .eq('username', normalizedName)
       .maybeSingle();
 
     if (fetchError) {
       throw fetchError;
     }
 
-    if (existingStudent) {
-      return { student: existingStudent, isNewStudent: false };
+    if (existingProfile) {
+      return { student: existingProfile, isNewStudent: false };
     }
 
-    // Create new student with normalized name
-    const { data: newStudent, error: insertError } = await supabase
-      .from('students')
-      .insert([{ name: normalizedName, display_name: studentName.trim(), created_at: new Date() }])
-      .select()
-      .maybeSingle();
-
-    if (insertError) throw insertError;
-    return { student: newStudent, isNewStudent: true };
+    return { student: null, isNewStudent: true };
   } catch (error) {
     console.error('Student login error:', error);
     throw error;
   }
 };
-
 // --- TEACHER LOGIN (by code only) ---
 export const teacherLogin = async (teacherCode) => {
   try {
@@ -217,78 +140,38 @@ export const studentAuthSignIn = async (email, password) => {
     if (!email || !password) throw new Error('Email and password required');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    // Ensure a students row exists after sign-in (when email confirmation is enabled)
-    try {
-      const userId = data?.user?.id || null;
-      if (userId) {
-        const { data: existing, error: fetchErr } = await supabase
-          .from('students')
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        if (fetchErr) throw fetchErr;
-        if (!existing) {
-          const fallbackName = (data?.user?.user_metadata?.username || (data?.user?.email || '').split('@')[0] || '').toLowerCase();
-          await supabase.from('students').insert([{
-            user_id: userId,
-            name: fallbackName || null,
-            email: data?.user?.email || null,
-            display_name: data?.user?.user_metadata?.username || null,
-            created_at: new Date(),
-            is_guest: false
-          }]);
-        }
-      }
-    } catch (insertErr) {
-      console.error('Failed to ensure students row after sign-in:', insertErr);
-    }
     return data.user;
   } catch (err) {
     console.error('studentAuthSignIn error:', err);
     throw err;
   }
 };
-
-export const studentAuthSignUp = async (email, password, username) => {
+export const studentAuthSignUp = async (email, password, fullName) => {
   try {
     if (!email || !password) throw new Error('Email and password required');
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { role: 'student', username: username || null }
+        data: { role: 'student', full_name: fullName || null }
       }
     });
     if (error) throw error;
-    // After successful signup, ensure a students row exists
-    try {
-      const userId = data?.user?.id || null;
-      const normalized = (username || email.split('@')[0]).toLowerCase();
-      // Upsert so we don't create duplicates and preserve the display name from signup
-      await supabase.from('students').upsert([
-        { user_id: userId, name: normalized, email, display_name: username || null, created_at: new Date() }
-      ], { onConflict: 'name' });
-    } catch (insertErr) {
-      console.error('Failed to upsert students row after signup:', insertErr);
-      // don't block signup on this error
-    }
-
     return data.user;
   } catch (err) {
     console.error('studentAuthSignUp error:', err);
     throw err;
   }
 };
-
 // Find a student's email by username or display name (case-insensitive)
 export const findStudentEmailByUsername = async (identifier) => {
   try {
     const normalized = (identifier || '').trim().toLowerCase();
     if (!normalized) return null;
     const { data, error } = await supabase
-      .from('students')
-      .select('email,name,display_name')
-      .or(`name.eq.${normalized},display_name.eq.${normalized}`)
+      .from('profiles')
+      .select('id, username, full_name, email')
+      .or(`username.eq.${normalized},full_name.eq.${normalized}`)
       .maybeSingle();
 
     if (error) throw error;
@@ -298,7 +181,6 @@ export const findStudentEmailByUsername = async (identifier) => {
     return null;
   }
 };
-
 // Send password reset email for a student (Supabase will email a reset link)
 export const studentAuthResetPassword = async (email, redirectTo) => {
   try {
@@ -315,56 +197,95 @@ export const studentAuthResetPassword = async (email, redirectTo) => {
   }
 };
 
-export const assignStudentToTeacher = async (userId, teacherUserId, email) => {
+export const assignStudentToTeacher = async (userId, teacherUserId) => {
   try {
     if (!userId || !teacherUserId) throw new Error('User and teacher required');
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('students')
-      .update({ teacher_user_id: teacherUserId, user_id: userId, is_guest: false })
-      .eq('user_id', userId)
+      .upsert([{ id: userId, teacher_id: teacherUserId }], { onConflict: 'id' })
       .select()
       .maybeSingle();
     if (error) throw error;
-    if (!data && email) {
-      const res = await supabase
-        .from('students')
-        .update({ teacher_user_id: teacherUserId, user_id: userId, is_guest: false })
-        .eq('email', email)
-        .select()
-        .maybeSingle();
-      if (res.error) throw res.error;
-      data = res.data;
-    }
+
+    const { error: classroomErr } = await supabase
+      .from('classrooms')
+      .upsert([{ teacher_id: teacherUserId, student_id: userId }], { onConflict: 'teacher_id,student_id' });
+    if (classroomErr) throw classroomErr;
+
     return data;
   } catch (err) {
     console.error('assignStudentToTeacher error:', err);
     throw err;
   }
 };
-
 export const getTeacherStudents = async () => {
   try {
     const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
     if (sessionErr) throw sessionErr;
     const userId = sessionData?.session?.user?.id;
     if (!userId) return [];
-    const { data: students, error } = await supabase
+
+    const { data: classroomRows, error: classroomErr } = await supabase
+      .from('classrooms')
+      .select('student_id')
+      .eq('teacher_id', userId);
+    if (classroomErr) throw classroomErr;
+
+    const studentIds = (classroomRows || []).map(r => r.student_id).filter(Boolean);
+    if (studentIds.length === 0) return [];
+
+    const { data: students, error: studentsErr } = await supabase
       .from('students')
-      .select('*')
-      .eq('teacher_user_id', userId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (students || []).map(s => {
-      const display = s.display_name || s.displayName || s.name || (s.email ? s.email.split('@')[0] : '');
+      .select('id, teacher_id, current_material_id, current_level, xp, weekly_streak')
+      .in('id', studentIds);
+    if (studentsErr) throw studentsErr;
+
+    const { data: profiles, error: profilesErr } = await supabase
+      .from('profiles')
+      .select('id, username, full_name')
+      .in('id', studentIds);
+    if (profilesErr) throw profilesErr;
+
+    const { data: historyRows, error: historyErr } = await supabase
+      .from('lesson_history')
+      .select('student_id, lesson_id, score, passed, failures, created_at')
+      .in('student_id', studentIds)
+      .order('created_at', { ascending: true });
+    if (historyErr) throw historyErr;
+
+    const profileById = new Map((profiles || []).map(p => [p.id, p]));
+    const studentById = new Map((students || []).map(s => [s.id, s]));
+    const historyById = new Map();
+    (historyRows || []).forEach(h => {
+      if (!historyById.has(h.student_id)) historyById.set(h.student_id, []);
+      historyById.get(h.student_id).push({
+        date: h.created_at,
+        lessonId: h.lesson_id,
+        score: h.score,
+        passed: h.passed,
+        failures: h.failures || []
+      });
+    });
+
+    return studentIds.map(id => {
+      const profile = profileById.get(id) || {};
+      const student = studentById.get(id) || {};
+      const history = (historyById.get(id) || []).map(h => ({
+        ...h,
+        material: student.current_material_id || null,
+        level: student.current_level || null
+      }));
+      const last = history.length ? history[history.length - 1] : null;
+      const display = profile.full_name || profile.username || 'Student';
       return {
-        ...s,
+        id,
         name: display,
-        progress: s.progress || 'Beginner',
-        lastScore: typeof s.lastScore === 'number' ? s.lastScore : 0,
-        lastLessonId: s.lastLessonId || 1,
-        lastMaterialId: s.lastMaterialId || null,
-        lastLevel: s.lastLevel || null,
-        history: Array.isArray(s.history) ? s.history : []
+        progress: student.current_level || 'Beginner',
+        lastScore: typeof last?.score === 'number' ? last.score : 0,
+        lastLessonId: last?.lessonId || 1,
+        lastMaterialId: student.current_material_id || null,
+        lastLevel: student.current_level || null,
+        history
       };
     });
   } catch (err) {
@@ -372,23 +293,21 @@ export const getTeacherStudents = async () => {
     return [];
   }
 };
-
 export const getTeacherNameByUserId = async (teacherUserId) => {
   try {
     if (!teacherUserId) return null;
     const { data, error } = await supabase
       .from('teachers')
-      .select('display_name,name')
-      .eq('user_id', teacherUserId)
+      .select('display_name')
+      .eq('id', teacherUserId)
       .maybeSingle();
     if (error) throw error;
-    return data?.display_name || data?.name || null;
+    return data?.display_name || null;
   } catch (err) {
     console.error('getTeacherNameByUserId error:', err);
     return null;
   }
 };
-
 // --- TEACHER EMAIL/PASSWORD AUTH (email-only) ---
 export const teacherAuthSignUp = async (email, password, displayName) => {
   try {
@@ -397,12 +316,11 @@ export const teacherAuthSignUp = async (email, password, displayName) => {
       email,
       password,
       options: {
-        data: { role: 'teacher', username: displayName || null, display_name: displayName || null }
+        data: { role: 'teacher', full_name: displayName || null }
       }
     });
     if (error) throw error;
 
-    // Insert teacher profile only if missing (avoid overwriting existing data)
     await ensureTeacherProfile(data?.user, displayName);
 
     return data.user;
@@ -411,21 +329,18 @@ export const teacherAuthSignUp = async (email, password, displayName) => {
     throw err;
   }
 };
-
 export const teacherAuthSignIn = async (email, password) => {
   try {
     if (!email || !password) throw new Error('Email and password required');
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    // Ensure a teachers row exists after sign-in (when email confirmation is enabled)
-    await ensureTeacherProfile(data?.user, data?.user?.user_metadata?.display_name || null);
+    await ensureTeacherProfile(data?.user, data?.user?.user_metadata?.full_name || null);
     return data.user;
   } catch (err) {
     console.error('teacherAuthSignIn error:', err);
     throw err;
   }
 };
-
 const generateInviteToken = () => {
   // Use a cryptographically secure token for invite links
   const bytes = new Uint8Array(32);
@@ -450,7 +365,7 @@ export const createTeacherInvite = async () => {
     const { data, error } = await supabase
       .from('teacher_invites')
       .insert([{
-        teacher_user_id: userId,
+        teacher_id: userId,
         token,
         expires_at: expiresAt,
         created_at: new Date()
@@ -512,7 +427,7 @@ export const updateStudentProgress = async (userId, updates) => {
     const { data, error } = await supabase
       .from('students')
       .update(updates)
-      .eq('user_id', userId)
+      .eq('id', userId)
       .select()
       .maybeSingle();
     if (error) throw error;
@@ -529,7 +444,7 @@ export const getStudentProgress = async (userId) => {
     const { data, error } = await supabase
       .from('students')
       .select('*')
-      .eq('user_id', userId)
+      .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
     return data;
@@ -600,9 +515,9 @@ export const upsertStudentProfile = async (userId, profileData) => {
     const { data, error } = await supabase
       .from('students')
       .upsert([{
-        user_id: userId,
+        id: userId,
         ...profileData
-      }], { onConflict: 'user_id' })
+      }], { onConflict: 'id' })
       .select()
       .maybeSingle();
     if (error) throw error;
@@ -612,3 +527,86 @@ export const upsertStudentProfile = async (userId, profileData) => {
     throw err;
   }
 };
+
+export const upsertProfile = async (userId, profileData) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert([{
+        id: userId,
+        ...profileData
+      }], { onConflict: 'id' })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('upsertProfile error:', err);
+    throw err;
+  }
+};
+
+export const getProfile = async (userId) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  } catch (err) {
+    console.error('getProfile error:', err);
+    return null;
+  }
+};
+
+export const deleteNotification = async (userId, notificationId) => {
+  try {
+    if (!userId || !notificationId) throw new Error('User ID and notification ID required');
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+      .eq('recipient_id', userId);
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('deleteNotification error:', err);
+    throw err;
+  }
+};
+
+export const clearNotificationsByType = async (userId, type, lessonId = null) => {
+  try {
+    if (!userId || !type) throw new Error('User ID and type required');
+    let query = supabase
+      .from('notifications')
+      .delete()
+      .eq('recipient_id', userId)
+      .eq('type', type);
+    if (lessonId !== null && lessonId !== undefined) {
+      query = query.eq('lesson_id', lessonId);
+    }
+    const { error } = await query;
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('clearNotificationsByType error:', err);
+    throw err;
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+

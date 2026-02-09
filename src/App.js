@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentLogin, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile } from './supabaseClient';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -168,8 +168,6 @@ const LESSON_SKILLS = {
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
-  const STORAGE_KEY = 'ispeaktu_user_data';
-
   const [view, setView] = useState('login'); 
   const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -181,7 +179,9 @@ export default function App() {
   const [fullName, setFullName] = useState('');
   const [inviteTeacherName, setInviteTeacherName] = useState('');
   const [studentTeacherName, setStudentTeacherName] = useState('');
+  const [inviteToken, setInviteToken] = useState(null);
   const [inviteConfirmed, setInviteConfirmed] = useState(false);
+  const [studentNotifications, setStudentNotifications] = useState([]);
   
   const [onboardingData, setOnboardingData] = useState({
     material: null,
@@ -208,174 +208,215 @@ export default function App() {
     return data;
   };
 
-  useEffect(() => {
-    const urlToken = getInviteToken();
-    if (urlToken) {
-      localStorage.setItem('ispeaktu_invite_token', urlToken);
-      localStorage.setItem('ispeaktu_invite_confirmed', 'false');
-      setInviteConfirmed(false);
-    }
-    const token = urlToken || getStoredInviteToken();
-    if (!token) return;
-    let active = true;
-    (async () => {
-      const teacherUserId = await redeemTeacherInvite(token);
-      if (!teacherUserId || !active) return;
-      const name = await getTeacherNameByUserId(teacherUserId);
-      if (name && active) setInviteTeacherName(name);
-    })();
-    return () => { active = false; };
-  }, []);
+  const loadStudentData = async (sessionUser) => {
+    const userId = sessionUser?.id;
+    if (!userId) return { material: null, level: null };
 
+    const [profile, student, history, notifications] = await Promise.all([
+      getProfile(userId),
+      getStudentProgress(userId),
+      getStudentLessonHistory(userId),
+      getNotifications(userId)
+    ]);
+
+    const normalized = (
+      profile?.username ||
+      profile?.full_name ||
+      sessionUser.user_metadata?.full_name ||
+      sessionUser.user_metadata?.username ||
+      (sessionUser.email || '').split('@')[0] ||
+      ''
+    ).toLowerCase();
+
+    setUserName(normalized);
+
+    if (!profile) {
+      try {
+        await upsertProfile(userId, {
+          username: normalized || null,
+          full_name: sessionUser.user_metadata?.full_name || null,
+          role: sessionUser.user_metadata?.role || 'student'
+        });
+      } catch (err) {
+        console.error('Failed to create profile row:', err);
+      }
+    }
+
+    if (!student) {
+      try {
+        await upsertStudentProfile(userId, {
+          current_material_id: null,
+          current_level: null,
+          xp: 0,
+          weekly_streak: 0
+        });
+      } catch (err) {
+        console.error('Failed to create student row:', err);
+      }
+    }
+
+    const material = MATERIALS_DATA.find(m => m.id === student?.current_material_id) || null;
+    const level = student?.current_level || null;
+    const nextOnboarding = {
+      material,
+      level,
+      lessonsPerWeek: onboardingData.lessonsPerWeek || 3
+    };
+    setOnboardingData(nextOnboarding);
+
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const completedHistory = (history || []).map(h => ({
+      date: h.created_at || new Date().toISOString(),
+      lessonId: h.lesson_id,
+      material: material?.id || null,
+      level: level || null,
+      passed: !!h.passed,
+      score: typeof h.score === 'number' ? h.score : 0,
+      failures: h.failures || []
+    }));
+
+    const weeklyActivityCount = completedHistory.filter(h => h.passed && new Date(h.date) >= weekAgo).length;
+    const weeklyStreak = typeof student?.weekly_streak === 'number' ? student.weekly_streak : weeklyActivityCount;
+
+    setStreakState({
+      weeklyStreak,
+      weeklyActivityCount,
+      lastResetDate: new Date().toISOString(),
+      completedHistory
+    });
+
+    setStudentNotifications(notifications || []);
+
+    if (student?.teacher_id) {
+      const teacherName = await getTeacherNameByUserId(student.teacher_id);
+      if (teacherName) setStudentTeacherName(teacherName);
+    }
+
+    return { material, level };
+  };
+
+  
   useEffect(() => {
     let active = true;
     (async () => {
-      const savedData = localStorage.getItem(STORAGE_KEY);
-      const parsed = savedData ? JSON.parse(savedData) : null;
       const { data: sessionData } = await supabase.auth.getSession();
       const sessionUser = sessionData?.session?.user;
 
-      let allowRestore = true;
-      if (sessionUser && parsed?.userName) {
-        const sessionName =
-          (sessionUser.user_metadata?.username ||
-            (sessionUser.email || '').split('@')[0] ||
-            '')
-            .toLowerCase();
-        allowRestore = parsed.userName.toLowerCase() === sessionName;
+      if (!sessionUser) {
+        if (active) setLoading(false);
+        return;
       }
 
-      if (parsed?.userName && allowRestore && active) {
-        const normalizedUserName = parsed.userName.toLowerCase();
-        setUserName(normalizedUserName);
-        setOnboardingData(rehydrateOnboardingData(parsed.onboardingData));
-
-        let currentStreakState = parsed.streakState || streakState;
-        const now = new Date();
-        const lastReset = new Date(currentStreakState.lastResetDate);
-        const diffInDays = (now - lastReset) / (1000 * 60 * 60 * 24);
-
-        if (diffInDays >= 7) {
-          currentStreakState = {
-            ...currentStreakState,
-            weeklyActivityCount: 0,
-            lastResetDate: now.toISOString()
-          };
-        }
-
-        setStreakState(currentStreakState);
-        setSettings(parsed.settings || settings);
-        setView('dashboard');
-      } else if (sessionUser && active) {
-        const role = sessionUser.user_metadata?.role;
-        if (role === 'teacher') {
+      const role = sessionUser.user_metadata?.role;
+      if (role === 'teacher') {
+        if (active) {
           setView('tutor_dashboard');
-        } else {
-          const normalized = (
-            sessionUser.user_metadata?.username ||
-            (sessionUser.email || '').split('@')[0] ||
-            ''
-          ).toLowerCase();
-          setUserName(normalized);
-          setView('dashboard');
+          setLoading(false);
         }
-      } else if (sessionUser && active) {
-        // If user confirmed email via link, start onboarding when no saved profile exists
-        const role = sessionUser.user_metadata?.role;
-        if (role !== 'teacher') {
-          const normalized = (
-            sessionUser.user_metadata?.username ||
-            (sessionUser.email || '').split('@')[0] ||
-            ''
-          ).toLowerCase();
-          setUserName(normalized);
-          persistData({ userName: normalized, displayName: sessionUser.user_metadata?.username || null, onboardingData, streakState });
-          setView('ob_screen1');
-        }
+        return;
       }
-      if (active) setLoading(false);
+
+      const { material, level } = await loadStudentData(sessionUser);
+      if (!active) return;
+      setView(material && level ? 'dashboard' : 'ob_screen1');
+      setLoading(false);
     })();
     return () => { active = false; };
   }, []);
 
-  const persistData = async (updates) => {
-    // Get current authenticated user
+    const persistData = async (updates) => {
     const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user?.id;
-    
+    const user = sessionData?.session?.user;
+    const userId = user?.id;
+
     if (!userId) {
       console.warn('No authenticated user - skipping persistence');
       return;
     }
 
-    // Build the profile data to sync with Supabase
-    const profileData = {};
-    
-    // Update onboarding data if provided
+    const profileUpdates = {};
+    if (updates.userName) profileUpdates.username = updates.userName;
+    if (updates.displayName) profileUpdates.full_name = updates.displayName;
+    if (user?.user_metadata?.role) profileUpdates.role = user.user_metadata.role;
+
+    const studentUpdates = {};
     if (updates.onboardingData) {
-      profileData.current_material_id = updates.onboardingData.material?.id || null;
-      profileData.current_level = updates.onboardingData.level || null;
-      profileData.lessons_per_week = updates.onboardingData.lessonsPerWeek || 3;
+      studentUpdates.current_material_id = updates.onboardingData.material?.id || null;
+      studentUpdates.current_level = updates.onboardingData.level || null;
     }
-    
-    // Update streak if provided
     if (updates.streakState) {
-      profileData.weekly_streak = updates.streakState.weeklyStreak || 0;
+      studentUpdates.weekly_streak = updates.streakState.weeklyStreak || 0;
     }
-    
-    // Update display name if provided
-    if (updates.displayName) {
-      profileData.display_name = updates.displayName;
+    if (typeof updates.xp === 'number') {
+      studentUpdates.xp = updates.xp;
     }
-    
-    // Sync to Supabase
-    if (Object.keys(profileData).length > 0) {
-      try {
-        await upsertStudentProfile(userId, profileData);
-      } catch (err) {
-        console.error('Failed to persist data to Supabase:', err);
-        // Continue anyway - UI state is still updated locally
-      }
+
+    try {
+      const ops = [];
+      if (Object.keys(profileUpdates).length > 0) ops.push(upsertProfile(userId, profileUpdates));
+      if (Object.keys(studentUpdates).length > 0) ops.push(upsertStudentProfile(userId, studentUpdates));
+      if (ops.length > 0) await Promise.all(ops);
+    } catch (err) {
+      console.error('Failed to persist data to Supabase:', err);
     }
   };
 
-  const recordActivity = (passed, scorePercent, failures = []) => {
+    const recordActivity = async (passed, scorePercent, failures = []) => {
     const updatedHistory = [
-        ...streakState.completedHistory, 
-        { 
-          date: new Date().toISOString(), 
-          lessonId: selection.lessonNumber,
-          material: selection.material?.id,
-          level: selection.level,
-          passed,
-          score: scorePercent,
-          failures
-        }
+      ...streakState.completedHistory,
+      {
+        date: new Date().toISOString(),
+        lessonId: selection.lessonNumber,
+        material: selection.material?.id,
+        level: selection.level,
+        passed,
+        score: scorePercent,
+        failures
+      }
     ];
-    
-    if (passed) {
-        const reminders = JSON.parse(localStorage.getItem('ispeaktu_tutor_reminders') || '{}');
-        if (reminders[userName] && reminders[userName].lessonId === selection.lessonNumber) {
-            delete reminders[userName];
-            localStorage.setItem('ispeaktu_tutor_reminders', JSON.stringify(reminders));
-        }
-        // Also clear praise when a new lesson is passed to keep notifications fresh
-        const praises = JSON.parse(localStorage.getItem('ispeaktu_tutor_praise') || '{}');
-        if (praises[userName]) {
-            delete praises[userName];
-            localStorage.setItem('ispeaktu_tutor_praise', JSON.stringify(praises));
-        }
-    }
-    
+
+    const weeklyActivityCount = passed ? streakState.weeklyActivityCount + 1 : streakState.weeklyActivityCount;
+    const weeklyStreak = passed ? streakState.weeklyStreak + 1 : streakState.weeklyStreak;
     const newState = {
       ...streakState,
-      weeklyActivityCount: passed ? streakState.weeklyActivityCount + 1 : streakState.weeklyActivityCount,
-      weeklyStreak: passed ? streakState.weeklyStreak + 1 : streakState.weeklyStreak,
+      weeklyActivityCount,
+      weeklyStreak,
       completedHistory: updatedHistory
     };
 
     setStreakState(newState);
-    persistData({ streakState: newState });
+
+    const computedXp = updatedHistory.filter(h => h.passed).length * 10;
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+
+      if (userId) {
+        await recordLessonHistory(userId, selection.lessonNumber, scorePercent, passed, failures);
+        await updateStudentProgress(userId, {
+          xp: computedXp,
+          weekly_streak: weeklyStreak,
+          current_material_id: selection.material?.id || null,
+          current_level: selection.level || null
+        });
+
+        if (passed) {
+          await clearNotificationsByType(userId, 'remind', selection.lessonNumber);
+          await clearNotificationsByType(userId, 'praise');
+          const refreshed = await getNotifications(userId);
+          setStudentNotifications(refreshed || []);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to record lesson activity:', err);
+    }
+
+    persistData({
+      streakState: newState,
+      onboardingData: { material: selection.material, level: selection.level, lessonsPerWeek: onboardingData.lessonsPerWeek },
+      xp: computedXp
+    });
   };
 
   // --- UI COMPONENTS ---
@@ -421,21 +462,26 @@ export default function App() {
 
   // --- VIEWS ---
   const Dashboard = () => {
-    const reminders = JSON.parse(localStorage.getItem('ispeaktu_tutor_reminders') || '{}');
-    const praises = JSON.parse(localStorage.getItem('ispeaktu_tutor_praise') || '{}');
-    const reminder = reminders[userName];
-    const praise = praises[userName];
+    const reminder = studentNotifications.find(n => n.type === 'remind') || null;
+    const praise = studentNotifications.find(n => n.type === 'praise') || null;
     
     const weeklyTarget = onboardingData.lessonsPerWeek || 3;
     const progressPerc = Math.min(100, (streakState.weeklyActivityCount / weeklyTarget) * 100);
 
-    const dismissPraise = (e) => {
+    const dismissPraise = async (e) => {
         e.stopPropagation();
-        const newP = { ...praises };
-        delete newP[userName];
-        localStorage.setItem('ispeaktu_tutor_praise', JSON.stringify(newP));
-        window.dispatchEvent(new Event('storage')); // Force update UI
-        setView('dashboard'); // Simple re-render trigger
+        if (!praise) return;
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const userId = sessionData?.session?.user?.id;
+          if (userId) {
+            await deleteNotification(userId, praise.id);
+            const refreshed = await getNotifications(userId);
+            setStudentNotifications(refreshed || []);
+          }
+        } catch (err) {
+          console.error('Failed to dismiss praise:', err);
+        }
     };
 
     return (
@@ -472,8 +518,9 @@ export default function App() {
 
         {reminder && (
             <div onClick={() => {
-                const mat = MATERIALS_DATA.find(m => m.id === reminder.materialId) || onboardingData.material;
-                setSelection({ material: mat, level: reminder.level, lessonNumber: reminder.lessonId });
+                const mat = onboardingData.material;
+                const lvl = onboardingData.level;
+                setSelection({ material: mat, level: lvl, lessonNumber: reminder.lesson_id });
                 setQuizState({ currentQuestionIndex: 0, isAnswered: false, selectedOption: null, score: 0, history: [] });
                 setView('quiz');
             }} className="mb-8 p-5 bg-[#FF2E6315] border border-[#FF2E6340] rounded-2xl flex items-start gap-4 cursor-pointer hover:bg-[#FF2E6325] transition-all border-l-4 shadow-[0_0_20px_rgba(255,46,99,0.1)] group">
@@ -483,7 +530,7 @@ export default function App() {
                 <div>
                     <h3 className="text-[#FF2E63] font-black text-sm mb-1 uppercase tracking-wider">Teacher Notification</h3>
                     <p className="text-white/80 text-sm leading-snug">
-                       Your teacher has requested that you retake <strong>Lesson {reminder.lessonId}</strong>. Practice makes perfect!
+                       Your teacher has requested that you retake <strong>Lesson {reminder.lesson_id}</strong>. Practice makes perfect!
                     </p>
                     <div className="mt-2 text-[10px] font-bold text-[#FF2E63] uppercase tracking-widest flex items-center gap-1">
                         Tap to start retake <ChevronRight size={12} />
@@ -670,12 +717,12 @@ export default function App() {
         const { data: sessionData } = await supabase.auth.getSession();
         const userId = sessionData?.session?.user?.id;
         if (!userId) return;
-        const { data: studentRow } = await supabase
-          .from('students')
-          .select('teacher_user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        const teacherUserId = studentRow?.teacher_user_id;
+          const { data: studentRow } = await supabase
+            .from('students')
+            .select('teacher_id')
+            .eq('id', userId)
+            .maybeSingle();
+          const teacherUserId = studentRow?.teacher_id;
         if (!teacherUserId) return;
         const name = await getTeacherNameByUserId(teacherUserId);
         if (name && active) setStudentTeacherName(name);
@@ -931,8 +978,7 @@ export default function App() {
     </div>
   );
 
-  const login = async (name) => {
-    // Email/password only login (name-based login removed)
+    const login = async (name) => {
     if (!email || !password) {
       setLoginError('Please enter email and password');
       return;
@@ -942,17 +988,8 @@ export default function App() {
       setLoginLoading(true);
       setLoginError('');
       const user = await studentAuthSignIn(email.toLowerCase(), password);
-      const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
-      setUserName(normalized);
-
-      // Load stored data for this user (using normalized id)
-      const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
-      if (saved) {
-        const p = JSON.parse(saved);
-        setOnboardingData(rehydrateOnboardingData(p.onboardingData));
-        setStreakState(p.streakState);
-      }
-      setView('dashboard');
+      const { material, level } = await loadStudentData(user);
+      setView(material && level ? 'dashboard' : 'ob_screen1');
     } catch (error) {
       setLoginError(error.message || 'Email login failed');
       console.error('Email login error:', error);
@@ -973,11 +1010,10 @@ export default function App() {
     }
   };
 
-  const getStoredInviteToken = () => localStorage.getItem('ispeaktu_invite_token') || null;
-  const clearStoredInviteToken = () => localStorage.removeItem('ispeaktu_invite_token');
-  const getInviteConfirmed = () => localStorage.getItem('ispeaktu_invite_confirmed') === 'true';
+  const getStoredInviteToken = () => inviteToken || null;
+  const clearStoredInviteToken = () => setInviteToken(null);
+  const getInviteConfirmed = () => inviteConfirmed;
   const setInviteConfirmedValue = (val) => {
-    localStorage.setItem('ispeaktu_invite_confirmed', val ? 'true' : 'false');
     setInviteConfirmed(!!val);
   };
 
@@ -1052,7 +1088,7 @@ export default function App() {
         </div>
       )}
       
-      {view === 'login' && (
+            {view === 'login' && (
         <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in duration-700">
           <div className="mb-12 text-center">
             <h1 className="text-6xl font-extrabold tracking-tighter text-white mb-2" style={{ fontFamily: "'Open Sans', sans-serif" }}>iSpeaktu</h1>
@@ -1131,7 +1167,7 @@ export default function App() {
                       try {
                         const teacherUserId = await redeemTeacherInvite(inviteToken);
                         if (teacherUserId) {
-                          await assignStudentToTeacher(user.id, teacherUserId, loginEmail);
+                          await assignStudentToTeacher(user.id, teacherUserId);
                           clearInviteToken();
                           clearStoredInviteToken();
                           setInviteConfirmedValue(false);
@@ -1140,19 +1176,8 @@ export default function App() {
                         console.error('Invite assign failed:', e);
                       }
                     }
-                    const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || loginEmail).toLowerCase();
-                    const currentData = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-                    if (currentData.userName && currentData.userName.toLowerCase() !== normalized) {
-                      localStorage.removeItem(STORAGE_KEY);
-                    }
-                    setUserName(normalized);
-                    const saved = localStorage.getItem(`ispeaktu_data_${normalized}`);
-                    if (saved) {
-                      const p = JSON.parse(saved);
-                      setOnboardingData(rehydrateOnboardingData(p.onboardingData));
-                      setStreakState(p.streakState);
-                    }
-                    setView('dashboard');
+                    const { material, level } = await loadStudentData(user);
+                    setView(material && level ? 'dashboard' : 'ob_screen1');
                   } catch (err) {
                     setLoginError(err.message || 'Email login failed');
                   } finally { setLoginLoading(false); }
@@ -1316,6 +1341,10 @@ export default function App() {
                           setLoginLoading(false);
                           return;
                         }
+                        const userId = sessionData.session.user?.id;
+                        if (userId) {
+                          await upsertProfile(userId, { full_name: fullName, role: 'teacher' });
+                        }
                         setView('tutor_dashboard');
                       } catch (err) {
                         const msg = (err?.message || '').toLowerCase();
@@ -1406,13 +1435,11 @@ export default function App() {
                           return;
                         }
                         const inviteToken = getInviteToken() || getStoredInviteToken();
-                        let assignedStudentRow = null;
                         if (inviteToken && getInviteConfirmed()) {
                           try {
                             const teacherUserId = await redeemTeacherInvite(inviteToken);
                             if (teacherUserId) {
-                              // Capture any existing student row returned by the assign call
-                              assignedStudentRow = await assignStudentToTeacher(user.id, teacherUserId, email.toLowerCase());
+                              await assignStudentToTeacher(user.id, teacherUserId);
                               clearInviteToken();
                               clearStoredInviteToken();
                               setInviteConfirmedValue(false);
@@ -1425,25 +1452,10 @@ export default function App() {
                         const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
                         setUserName(normalized);
 
-                        // If the DB returned a student row with a saved track, keep it.
-                        let finalOnboarding = onboardingData;
-                        if (assignedStudentRow && (assignedStudentRow.material || assignedStudentRow.level)) {
-                          const mat = MATERIALS_DATA.find(m => m.id === assignedStudentRow.material) || null;
-                          finalOnboarding = {
-                            material: mat,
-                            level: assignedStudentRow.level || null,
-                            lessonsPerWeek: assignedStudentRow.lessonsPerWeek || onboardingData.lessonsPerWeek
-                          };
-                          setOnboardingData(finalOnboarding);
-                          persistData({ userName: normalized, displayName: fullName, onboardingData: finalOnboarding, streakState });
-                          // Already has a track — send to dashboard with preserved track
-                          setView('dashboard');
-                        } else {
-                          // No existing track: ensure user goes through onboarding (no default track assigned)
-                          setOnboardingData({ material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek });
-                          persistData({ userName: normalized, displayName: fullName, onboardingData: { material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek }, streakState });
-                          setView('ob_screen1');
-                        }
+                        const baseOnboarding = { material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek };
+                        setOnboardingData(baseOnboarding);
+                        await persistData({ userName: normalized, displayName: fullName, onboardingData: baseOnboarding, streakState, xp: 0 });
+                        setView('ob_screen1');
                       } catch (err) {
                         const msg = (err?.message || '').toLowerCase();
                         if (msg.includes('rate limit') || msg.includes('rate-limit')) {
@@ -1696,12 +1708,8 @@ function TutorDashboard({ onLogout }) {
     const [inviteError, setInviteError] = useState('');
     const [inviteLoading, setInviteLoading] = useState(false);
     const [students, setStudents] = useState([]);
-    const [reminders, setReminders] = useState(() => 
-      JSON.parse(localStorage.getItem('ispeaktu_tutor_reminders') || '{}')
-    );
-    const [praises, setPraises] = useState(() => 
-      JSON.parse(localStorage.getItem('ispeaktu_tutor_praise') || '{}')
-    );
+    const [reminders, setReminders] = useState({});
+    const [praises, setPraises] = useState({});
     
     useEffect(() => {
         let active = true;
@@ -1713,8 +1721,31 @@ function TutorDashboard({ onLogout }) {
             const { data: sessionData } = await supabase.auth.getSession();
             const user = sessionData?.session?.user;
             if (user && active) {
-                const name = user.user_metadata?.display_name || user.user_metadata?.username || (user.email || '').split('@')[0] || '';
+                const name = user.user_metadata?.full_name || user.user_metadata?.display_name || user.user_metadata?.username || (user.email || '').split('@')[0] || '';
                 if (active && name) setTeacherName(name);
+            }
+        })();
+        (async () => {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const teacherId = sessionData?.session?.user?.id;
+            if (!teacherId || !active) return;
+            const { data: sent, error } = await supabase
+              .from('notifications')
+              .select('recipient_id, type')
+              .eq('sender_id', teacherId);
+            if (error) {
+              console.error('Failed to load notifications:', error);
+              return;
+            }
+            const r = {};
+            const p = {};
+            (sent || []).forEach(n => {
+              if (n.type === 'remind') r[n.recipient_id] = true;
+              if (n.type === 'praise') p[n.recipient_id] = true;
+            });
+            if (active) {
+              setReminders(r);
+              setPraises(p);
             }
         })();
         return () => { active = false; };
@@ -1724,26 +1755,34 @@ function TutorDashboard({ onLogout }) {
         s.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     
-    const handleRemind = (e, s) => {
+    const handleRemind = async (e, s) => {
         e.stopPropagation();
         // Prevent reminders for students with no quiz history
         if (!s.history || s.history.length === 0) {
             return;
         }
-        const newR = { ...reminders, [s.id]: { 
-            lessonId: s.lastLessonId, 
-            materialId: s.lastMaterialId, 
-            level: s.lastLevel 
-        } };
-        localStorage.setItem('ispeaktu_tutor_reminders', JSON.stringify(newR));
-        setReminders(newR);
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const teacherId = sessionData?.session?.user?.id;
+            if (!teacherId) return;
+            await createNotification(s.id, 'remind', teacherId, s.lastLessonId || null);
+            setReminders({ ...reminders, [s.id]: true });
+        } catch (err) {
+            console.error('Failed to send reminder:', err);
+        }
     };
 
-    const handlePraise = (e, s) => {
+    const handlePraise = async (e, s) => {
         e.stopPropagation();
-        const newP = { ...praises, [s.id]: true };
-        localStorage.setItem('ispeaktu_tutor_praise', JSON.stringify(newP));
-        setPraises(newP);
+        try {
+            const { data: sessionData } = await supabase.auth.getSession();
+            const teacherId = sessionData?.session?.user?.id;
+            if (!teacherId) return;
+            await createNotification(s.id, 'praise', teacherId, s.lastLessonId || null);
+            setPraises({ ...praises, [s.id]: true });
+        } catch (err) {
+            console.error('Failed to send praise:', err);
+        }
     };
 
     const handleCreateInvite = async () => {
@@ -2050,3 +2089,11 @@ function TutorDashboard({ onLogout }) {
       </div>
     );
 }
+
+
+
+
+
+
+
+
