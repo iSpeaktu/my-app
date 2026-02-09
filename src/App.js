@@ -899,6 +899,19 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const token = getInviteToken();
+    if (!token) return;
+    let active = true;
+    (async () => {
+      const teacherUserId = await redeemTeacherInvite(token);
+      if (!teacherUserId || !active) return;
+      const name = await getTeacherNameByUserId(teacherUserId);
+      if (name && active) setInviteTeacherName(name);
+    })();
+    return () => { active = false; };
+  }, []);
+
   const handleTeacherLogin = async () => {
     if (!email) { setLoginError('Enter email'); return; }
     if (!password) { setLoginError('Enter password'); return; }
