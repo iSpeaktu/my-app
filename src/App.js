@@ -1163,7 +1163,8 @@ export default function App() {
                   } finally { setLoginLoading(false); }
                 }}
                 disabled={loginLoading}
-                className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
+                aria-label="Sign in to your student account"
+                className="flex-1 bg-[#00F2FF] text-[#0A0A0C] py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all shadow-[0_0_20px_rgba(0,242,255,0.2)] disabled:opacity-50"
               >
                 {loginLoading ? 'Signing in...' : 'Sign in'}
               </button>
@@ -1171,7 +1172,8 @@ export default function App() {
               <button 
                 onClick={() => { setLoginError(''); setView('signup'); }}
                 disabled={loginLoading}
-                className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50"
+                aria-label="Create a new student account"
+                className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all disabled:opacity-50"
               >
                 Sign up
               </button>
@@ -1782,7 +1784,11 @@ function TutorDashboard({ onLogout }) {
 
         return (
           <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-right-8">
-            <button onClick={() => { setSelectedStudent(null); setExpandedQuiz(null); }} className="flex items-center gap-2 text-[#00F2FF] font-black uppercase text-[10px] tracking-widest mb-6 group">
+            <button
+              onClick={() => { setSelectedStudent(null); setExpandedQuiz(null); }}
+              aria-label="Back to student overview"
+              className="flex items-center gap-2 text-[#00F2FF] font-black uppercase text-[10px] tracking-widest mb-6 group focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] rounded px-2 py-1 transition-all"
+            >
                 <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to Overview
             </button>
             <div className="bg-[#16161D] border border-[#2D2D3A] rounded-3xl p-8 mb-8 relative overflow-hidden">
@@ -1915,11 +1921,16 @@ function TutorDashboard({ onLogout }) {
                 <button
                   onClick={handleCreateInvite}
                   disabled={inviteLoading}
-                  className="px-3 py-2 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white/60 text-[10px] font-black uppercase tracking-widest hover:text-white hover:border-[#00F2FF40] transition-colors disabled:opacity-50"
+                  aria-label="Create teacher invite link"
+                  className="px-3 py-2 rounded-xl bg-[#16161D] border border-[#2D2D3A] text-white/60 text-[10px] font-black uppercase tracking-widest hover:text-white hover:border-[#00F2FF40] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] transition-colors disabled:opacity-50"
                 >
                   {inviteLoading ? 'Creating...' : 'Invite Link'}
                 </button>
-                <button onClick={onLogout} className="w-10 h-10 rounded-full bg-[#16161D] border border-[#2D2D3A] flex items-center justify-center text-white/40 hover:text-[#FF2E63] transition-colors">
+                <button
+                  onClick={onLogout}
+                  aria-label="Logout from tutor dashboard"
+                  className="w-10 h-10 rounded-full bg-[#16161D] border border-[#2D2D3A] flex items-center justify-center text-white/40 hover:text-[#FF2E63] focus:outline-none focus:ring-2 focus:ring-[#FF2E63] transition-colors"
+                >
                     <Icon name="LogOut" size={18}/>
                 </button>
             </div>
@@ -1937,7 +1948,8 @@ function TutorDashboard({ onLogout }) {
                 <input
                   readOnly
                   value={inviteLink}
-                  className="flex-1 bg-[#16161D] border border-[#2D2D3A] rounded-xl px-3 py-2 text-[10px] font-bold text-white/80 outline-none"
+                  aria-label="Invite link URL"
+                  className="flex-1 bg-[#16161D] border border-[#2D2D3A] rounded-xl px-3 py-2 text-[10px] font-bold text-white/80 outline-none focus:border-[#00F2FF] focus:ring-1 focus:ring-[#00F2FF]/20 transition-all"
                 />
                 <button
                   onClick={async () => {
@@ -1945,7 +1957,8 @@ function TutorDashboard({ onLogout }) {
                       await navigator.clipboard.writeText(inviteLink);
                     }
                   }}
-                  className="px-3 py-2 rounded-xl bg-[#00F2FF] text-[#0A0A0C] text-[10px] font-black uppercase tracking-widest"
+                  aria-label="Copy invite link to clipboard"
+                  className="px-3 py-2 rounded-xl bg-[#00F2FF] text-[#0A0A0C] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all"
                 >
                   Copy
                 </button>
@@ -2009,7 +2022,8 @@ function TutorDashboard({ onLogout }) {
                         {needsRetake && s.history && s.history.length > 0 ? (
                             <button 
                                 onClick={(e) => handleRemind(e, s)}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 ${reminders[s.id] ? 'bg-[#2D2D3A] text-white/20' : 'bg-[#FF2E63] text-white hover:brightness-110 active:scale-95'}`}
+                                aria-label={`Remind ${s.name} to complete lesson`}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${reminders[s.id] ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#FF2E63] text-white hover:brightness-110 active:scale-95 focus:ring-[#FF2E63]'}`}
                             >
                                 <Icon name="Bell" size={12} />
                                 {reminders[s.id] ? 'Reminded' : 'Remind'}
@@ -2017,7 +2031,8 @@ function TutorDashboard({ onLogout }) {
                         ) : (!needsRetake && s.history && s.history.length > 0) ? (
                             <button 
                                 onClick={(e) => handlePraise(e, s)}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 ${praises[s.id] ? 'bg-[#2D2D3A] text-white/20' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95'}`}
+                                aria-label={`Send praise to ${s.name}`}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${praises[s.id] ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95 focus:ring-[#00FF94]'}`}
                             >
                                 <Icon name="ThumbsUp" size={12} />
                                 {praises[s.id] ? 'Sent' : 'Thumbs Up'}
