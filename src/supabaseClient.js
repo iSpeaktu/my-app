@@ -329,7 +329,7 @@ export const getTeacherStudents = async () => {
 
     const { data: profiles, error: profilesErr } = await supabase
       .from('profiles')
-      .select('id, username, full_name')
+      .select('id, username, full_name, avatar_url')
       .in('id', studentIds);
     if (profilesErr) throw profilesErr;
 
@@ -367,6 +367,7 @@ export const getTeacherStudents = async () => {
       return {
         id,
         name: display,
+        avatarUrl: profile.avatar_url || null,
         progress: student.current_level || 'Beginner',
         lastScore: typeof last?.score === 'number' ? last.score : 0,
         lastLessonId: last?.lessonId || 1,
@@ -676,6 +677,24 @@ export const upsertProfile = async (userId, profileData) => {
     if (error) throw error;
   } catch (err) {
     console.error('upsertProfile error:', err);
+    throw err;
+  }
+};
+
+export const uploadAvatar = async (userId, file) => {
+  try {
+    if (!userId || !file) throw new Error('User ID and file required');
+    const ext = (file.name || '').split('.').pop() || 'png';
+    const filePath = `${userId}/${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase
+      .storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true });
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+    return data?.publicUrl || null;
+  } catch (err) {
+    console.error('uploadAvatar error:', err);
     throw err;
   }
 };

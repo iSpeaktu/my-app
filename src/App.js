@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest } from './supabaseClient';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -183,6 +183,8 @@ export default function App() {
   const [inviteConfirmed, setInviteConfirmed] = useState(false);
   const [hasAssignedTeacher, setHasAssignedTeacher] = useState(null);
   const [studentNotifications, setStudentNotifications] = useState([]);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarLoading, setAvatarLoading] = useState(false);
   
   const [onboardingData, setOnboardingData] = useState({
     material: null,
@@ -253,6 +255,9 @@ export default function App() {
       } catch (err) {
         console.error('Failed to create profile row:', err);
       }
+    }
+    if (profile?.avatar_url) {
+      setAvatarUrl(profile.avatar_url);
     }
 
     if (!student) {
@@ -444,17 +449,17 @@ export default function App() {
     ];
 
     const now = new Date();
-    const currentWeekStart = new Date(getWeekStartISO(now));
-    const lastWeekStart = streakState.lastResetDate ? new Date(streakState.lastResetDate) : currentWeekStart;
-    const isSameWeek = lastWeekStart.getTime() === currentWeekStart.getTime();
-
-    const target = onboardingData.lessonsPerWeek || 3;
     const alreadyPassed = streakState.completedHistory.some(h =>
       h.passed &&
       h.lessonId === selection.lessonNumber &&
       h.material === selection.material?.id &&
       h.level === selection.level
     );
+    const currentWeekStart = new Date(getWeekStartISO(now));
+    const lastWeekStart = streakState.lastResetDate ? new Date(streakState.lastResetDate) : currentWeekStart;
+    const isSameWeek = lastWeekStart.getTime() === currentWeekStart.getTime();
+
+    const target = onboardingData.lessonsPerWeek || 3;
 
     let weeklyActivityCount = streakState.weeklyActivityCount;
     if (passed && !alreadyPassed) {
@@ -507,6 +512,25 @@ export default function App() {
           last_activity_date: passed ? now.toISOString() : undefined
         });
 
+        if (!alreadyPassed) {
+          try {
+            const studentRow = await getStudentProgress(userId);
+            const teacherId = studentRow?.teacher_id || null;
+            if (teacherId) {
+              const existingNotifications = await getNotifications(userId);
+              const lessonKey = String(selection.lessonNumber || '');
+              const hasType = (existingNotifications || []).some(n =>
+                String(n.lesson_id || '') === lessonKey && n.type === (passed ? 'praise' : 'reminder')
+              );
+              if (!hasType) {
+                await createNotification(userId, passed ? 'praise' : 'reminder', teacherId, lessonKey);
+              }
+            }
+          } catch (err) {
+            console.error('Failed to auto-send notification:', err);
+          }
+        }
+
         if (passed) {
           await clearNotificationsByType(userId, 'reminder', selection.lessonNumber);
           await clearNotificationsByType(userId, 'praise');
@@ -541,6 +565,15 @@ export default function App() {
             <button onClick={onBack} className="p-2 hover:bg-[#2D2D3A] rounded-full text-white transition-colors">
               <ChevronLeft size={24} />
             </button>
+          )}
+          {avatarUrl ? (
+            <div className="w-10 h-10 rounded-full overflow-hidden border border-[#2D2D3A] bg-[#0A0A0C]">
+              <img src={avatarUrl} alt="Profile avatar" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-[#16161D] border border-[#2D2D3A] flex items-center justify-center text-white/30">
+              <User size={18} />
+            </div>
           )}
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white">{title}</h1>
@@ -1849,6 +1882,51 @@ export default function App() {
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 px-2">Profile Information</h4>
                     <div className="bg-[#16161D] border border-[#2D2D3A] rounded-3xl p-6 space-y-4">
                         <div className="space-y-2">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-white/40 ml-2">Avatar</label>
+                            <div className="flex items-center gap-4">
+                                <div className="w-14 h-14 rounded-2xl overflow-hidden border border-[#2D2D3A] bg-[#0A0A0C] flex items-center justify-center text-white/30">
+                                    {avatarUrl ? (
+                                        <img src={avatarUrl} alt="Profile avatar" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <User size={20} />
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <input
+                                        id="profile-avatar"
+                                        name="profile_avatar"
+                                        type="file"
+                                        accept="image/*"
+                                        disabled={avatarLoading}
+                                        onChange={async (e) => {
+                                            const file = e.target.files?.[0];
+                                            if (!file) return;
+                                            try {
+                                                setAvatarLoading(true);
+                                                const { data: sessionData } = await supabase.auth.getSession();
+                                                const userId = sessionData?.session?.user?.id;
+                                                if (!userId) return;
+                                                const url = await uploadAvatar(userId, file);
+                                                if (url) {
+                                                    setAvatarUrl(url);
+                                                    await upsertProfile(userId, { avatar_url: url });
+                                                }
+                                            } catch (err) {
+                                                console.error('Avatar upload failed:', err);
+                                            } finally {
+                                                setAvatarLoading(false);
+                                                e.target.value = '';
+                                            }
+                                        }}
+                                        className="block w-full text-[11px] text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-[#00F2FF] file:px-3 file:py-2 file:text-[10px] file:font-black file:uppercase file:tracking-widest file:text-[#0A0A0C] hover:file:brightness-110 disabled:opacity-50"
+                                    />
+                                    <p className="text-[9px] text-white/30 font-bold uppercase tracking-widest mt-2">
+                                        {avatarLoading ? 'Uploading...' : 'PNG or JPG'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
                             <label className="text-[9px] font-black uppercase tracking-widest text-white/40 ml-2">Name</label>
                             <div className="relative group">
                                 <input 
@@ -1974,6 +2052,12 @@ function TutorDashboard({ onLogout }) {
     const [reminders, setReminders] = useState({});
     const [praises, setPraises] = useState({});
 
+    const getTrackLabel = (materialId) => {
+        const m = MATERIALS_DATA.find(x => x.id === materialId);
+        return m?.title || 'Track';
+    };
+
+    const getLessonKey = (studentId, lessonId, type) => `${studentId || ''}_${lessonId || ''}_${type || ''}`;
     const getLocalSentMap = (key) => {
         try {
             return JSON.parse(localStorage.getItem(key) || '{}');
@@ -2022,8 +2106,8 @@ function TutorDashboard({ onLogout }) {
             const r = {};
             const p = {};
             (sent || []).forEach(n => {
-              if (n.type === 'reminder') r[n.recipient_id] = true;
-              if (n.type === 'praise') p[n.recipient_id] = true;
+              if (n.type === 'reminder') r[getLessonKey(n.recipient_id, n.lesson_id, 'reminder')] = true;
+              if (n.type === 'praise') p[getLessonKey(n.recipient_id, n.lesson_id, 'praise')] = true;
             });
             if (active) {
               const mergedReminders = { ...localReminders, ...r };
@@ -2041,7 +2125,7 @@ function TutorDashboard({ onLogout }) {
         s.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
     
-    const handleRemind = async (e, s) => {
+    const handleRemind = async (e, s, lessonId) => {
         e.stopPropagation();
         // Prevent reminders for students with no quiz history
         if (!s.history || s.history.length === 0) {
@@ -2051,9 +2135,9 @@ function TutorDashboard({ onLogout }) {
             const { data: sessionData } = await supabase.auth.getSession();
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId) return;
-            await createNotification(s.id, 'reminder', teacherId, s.lastLessonId || null);
+            await createNotification(s.id, 'reminder', teacherId, lessonId || null);
             const reminderKey = `ispeaktu_tutor_reminders_${teacherId}`;
-            const next = { ...reminders, [s.id]: true };
+            const next = { ...reminders, [getLessonKey(s.id, lessonId, 'reminder')]: true };
             setReminders(next);
             setLocalSentMap(reminderKey, next);
         } catch (err) {
@@ -2061,15 +2145,15 @@ function TutorDashboard({ onLogout }) {
         }
     };
 
-    const handlePraise = async (e, s) => {
+    const handlePraise = async (e, s, lessonId) => {
         e.stopPropagation();
         try {
             const { data: sessionData } = await supabase.auth.getSession();
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId) return;
-            await createNotification(s.id, 'praise', teacherId, s.lastLessonId || null);
+            await createNotification(s.id, 'praise', teacherId, lessonId || null);
             const praiseKey = `ispeaktu_tutor_praises_${teacherId}`;
-            const next = { ...praises, [s.id]: true };
+            const next = { ...praises, [getLessonKey(s.id, lessonId, 'praise')]: true };
             setPraises(next);
             setLocalSentMap(praiseKey, next);
         } catch (err) {
@@ -2125,12 +2209,18 @@ function TutorDashboard({ onLogout }) {
             <div className="bg-[#16161D] border border-[#2D2D3A] rounded-3xl p-8 mb-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#00F2FF] to-[#7000FF]" />
                 <div className="flex items-center gap-4 mb-6">
-                    <div className="w-16 h-16 rounded-2xl bg-[#7000FF20] border border-[#7000FF40] flex items-center justify-center">
-                        <User className="text-[#7000FF]" size={32} />
-                    </div>
+                        <div className="w-16 h-16 rounded-2xl bg-[#7000FF20] border border-[#7000FF40] flex items-center justify-center overflow-hidden">
+                            {selectedStudent.avatarUrl ? (
+                                <img src={selectedStudent.avatarUrl} alt={`${selectedStudent.name} avatar`} className="w-full h-full object-cover" />
+                            ) : (
+                                <User className="text-[#7000FF]" size={32} />
+                            )}
+                        </div>
                     <div>
                         <h2 className="text-2xl font-black text-white">{selectedStudent.name}</h2>
-                        <p className="text-[#00F2FF] text-[10px] font-black uppercase tracking-widest">{selectedStudent.progress}</p>
+                        <p className="text-[#00F2FF] text-[10px] font-black tracking-widest">
+                          {getTrackLabel(selectedStudent.lastMaterialId)} • {selectedStudent.lastLevel || selectedStudent.progress}
+                        </p>
                     </div>
                 </div>
                 
@@ -2178,8 +2268,22 @@ function TutorDashboard({ onLogout }) {
             <h3 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4 px-2">Quiz History</h3>
             <div className="space-y-3">
                 {selectedStudent.history && selectedStudent.history.length > 0 ? (
-                  selectedStudent.history.slice().sort((a,b) => (a.lessonId || 0) - (b.lessonId || 0)).map((h, i) => {
+                  selectedStudent.history
+                    .slice()
+                    .sort((a, b) => new Date(a.date) - new Date(b.date))
+                    .reduce((acc, h) => {
+                      const idx = acc.findIndex(x => x.lessonId === h.lessonId);
+                      if (idx === -1) acc.push(h);
+                      else if (new Date(h.date) > new Date(acc[idx].date)) acc[idx] = h;
+                      return acc;
+                    }, [])
+                    .sort((a, b) => (a.lessonId || 0) - (b.lessonId || 0))
+                    .map((h, i) => {
                     const isExpanded = expandedQuiz === i;
+                    const reminderKey = getLessonKey(selectedStudent.id, h.lessonId, 'reminder');
+                    const praiseKey = getLessonKey(selectedStudent.id, h.lessonId, 'praise');
+                    const reminderSent = !!reminders[reminderKey];
+                    const praiseSent = !!praises[praiseKey];
                     return (
                       <div key={i}>
                         <div 
@@ -2197,6 +2301,27 @@ function TutorDashboard({ onLogout }) {
                                         <div className={`text-2xl font-black ${h.passed ? 'text-[#00FF94]' : 'text-[#FF2E63]'}`}>{h.score}%</div>
                                         <div className={`text-[8px] font-black uppercase tracking-widest ${h.passed ? 'text-[#00FF9440]' : 'text-[#FF2E6340]'}`}>
                                             {h.passed ? 'Passed' : 'Needs Review'}
+                                        </div>
+                                        <div className="mt-3">
+                                          {h.passed ? (
+                                            <button
+                                              onClick={(e) => handlePraise(e, selectedStudent, h.lessonId)}
+                                              aria-label={`Send praise for lesson ${h.lessonId}`}
+                                              className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${praiseSent ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95 focus:ring-[#00FF94]'}`}
+                                            >
+                                              <Icon name="ThumbsUp" size={10} />
+                                              {praiseSent ? 'Sent' : 'Thumbs Up'}
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={(e) => handleRemind(e, selectedStudent, h.lessonId)}
+                                              aria-label={`Remind for lesson ${h.lessonId}`}
+                                              className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${reminderSent ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#FF2E63] text-white hover:brightness-110 active:scale-95 focus:ring-[#FF2E63]'}`}
+                                            >
+                                              <Icon name="Bell" size={10} />
+                                              {reminderSent ? 'Reminded' : 'Remind'}
+                                            </button>
+                                          )}
                                         </div>
                                     </div>
                                 </div>
@@ -2348,36 +2473,22 @@ function TutorDashboard({ onLogout }) {
                         className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-[#00F2FF40] hover:bg-[#1C1C26] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all active:scale-[0.99] group"
                     >
                         <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-[#0A0A0C] border border-[#2D2D3A] flex items-center justify-center text-white/20 group-hover:text-[#00F2FF] group-hover:border-[#00F2FF20] transition-all">
-                                <User size={24} />
+                            <div className="w-12 h-12 rounded-xl bg-[#0A0A0C] border border-[#2D2D3A] flex items-center justify-center overflow-hidden text-white/20 group-hover:text-[#00F2FF] group-hover:border-[#00F2FF20] transition-all">
+                                {s.avatarUrl ? (
+                                    <img src={s.avatarUrl} alt={`${s.name} avatar`} className="w-full h-full object-cover" />
+                                ) : (
+                                    <User size={24} />
+                                )}
                             </div>
                             <div>
                                 <div className="font-black text-white text-lg">{s.name}</div>
-                                <div className="text-[10px] text-[#00F2FF] font-black uppercase tracking-widest">
-                                  {s.progress} • {s.lastScore}% Score
+                                <div className="text-[10px] text-[#00F2FF] font-black tracking-widest">
+                                  {getTrackLabel(s.lastMaterialId)} • {s.lastLevel || s.progress}
                                 </div>
                             </div>
                         </div>
                         
-                        {needsRetake && s.history && s.history.length > 0 ? (
-                            <button 
-                                onClick={(e) => handleRemind(e, s)}
-                                aria-label={`Remind ${s.name} to complete lesson`}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${reminders[s.id] ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#FF2E63] text-white hover:brightness-110 active:scale-95 focus:ring-[#FF2E63]'}`}
-                            >
-                                <Icon name="Bell" size={12} />
-                                {reminders[s.id] ? 'Reminded' : 'Remind'}
-                            </button>
-                        ) : (!needsRetake && s.history && s.history.length > 0) ? (
-                            <button 
-                                onClick={(e) => handlePraise(e, s)}
-                                aria-label={`Send praise to ${s.name}`}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${praises[s.id] ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95 focus:ring-[#00FF94]'}`}
-                            >
-                                <Icon name="ThumbsUp" size={12} />
-                                {praises[s.id] ? 'Sent' : 'Thumbs Up'}
-                            </button>
-                        ) : null}
+                        {null}
                     </div>
                 );
             })}
