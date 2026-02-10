@@ -157,6 +157,11 @@ export const studentAuthSignUp = async (email, password, fullName) => {
       }
     });
     if (error) throw error;
+    if (data?.user?.id) {
+      await supabase
+        .from('students')
+        .insert([{ id: data.user.id }], { returning: 'minimal' });
+    }
     return data.user;
   } catch (err) {
     console.error('studentAuthSignUp error:', err);
@@ -190,7 +195,6 @@ export const studentAuthResetPassword = async (email, redirectTo) => {
     if (redirectTo) options.redirectTo = redirectTo;
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, options);
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('studentAuthResetPassword error:', err);
     throw err;
@@ -200,19 +204,21 @@ export const studentAuthResetPassword = async (email, redirectTo) => {
 export const assignStudentToTeacher = async (userId, teacherUserId) => {
   try {
     if (!userId || !teacherUserId) throw new Error('User and teacher required');
-    const { data, error } = await supabase
+    
+    // Perform the student update
+    const { error } = await supabase
       .from('students')
-      .upsert([{ id: userId, teacher_id: teacherUserId }], { onConflict: 'id' })
-      .select()
-      .maybeSingle();
+      .upsert([{ id: userId, teacher_id: teacherUserId }], { onConflict: 'id', returning: 'minimal' });
     if (error) throw error;
 
+    // Perform the classroom update
     const { error: classroomErr } = await supabase
       .from('classrooms')
       .upsert([{ teacher_id: teacherUserId, student_id: userId }], { onConflict: 'teacher_id,student_id' });
     if (classroomErr) throw classroomErr;
 
-    return data;
+    // FIX: Simply return true or a success message instead of 'data'
+    return { success: true }; 
   } catch (err) {
     console.error('assignStudentToTeacher error:', err);
     throw err;
@@ -373,7 +379,6 @@ export const createTeacherInvite = async () => {
       .select()
       .maybeSingle();
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('createTeacherInvite error:', err);
     throw err;
@@ -414,7 +419,6 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
       .select()
       .maybeSingle();
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('recordLessonHistory error:', err);
     throw err;
@@ -431,7 +435,6 @@ export const updateStudentProgress = async (userId, updates) => {
       .select()
       .maybeSingle();
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('updateStudentProgress error:', err);
     throw err;
@@ -447,7 +450,6 @@ export const getStudentProgress = async (userId) => {
       .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('getStudentProgress error:', err);
     return null;
@@ -512,16 +514,13 @@ export const getNotifications = async (userId) => {
 export const upsertStudentProfile = async (userId, profileData) => {
   try {
     if (!userId) throw new Error('User ID required');
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('students')
       .upsert([{
         id: userId,
         ...profileData
-      }], { onConflict: 'id' })
-      .select()
-      .maybeSingle();
+      }], { onConflict: 'id', returning: 'minimal' });
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('upsertStudentProfile error:', err);
     throw err;
@@ -531,16 +530,13 @@ export const upsertStudentProfile = async (userId, profileData) => {
 export const upsertProfile = async (userId, profileData) => {
   try {
     if (!userId) throw new Error('User ID required');
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('profiles')
       .upsert([{
         id: userId,
         ...profileData
-      }], { onConflict: 'id' })
-      .select()
-      .maybeSingle();
+      }], { onConflict: 'id', returning: 'minimal' });
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('upsertProfile error:', err);
     throw err;
