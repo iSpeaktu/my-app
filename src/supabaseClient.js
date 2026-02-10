@@ -28,11 +28,44 @@ const ensureTeacherProfile = async (user, displayName) => {
 
     const display = displayName || user?.user_metadata?.full_name || user?.user_metadata?.display_name || user?.user_metadata?.username || null;
 
-    const { error } = await supabase
-      .from('teachers')
-      .upsert([{ id: userId, display_name: display || null }], { onConflict: 'id', returning: 'minimal' });
+    // Ensure profile exists first to satisfy teachers.id FK -> profiles.id
+    let profileError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert([{ id: userId, full_name: display || null, role: 'teacher' }], { onConflict: 'id', returning: 'minimal' });
+      if (!error) {
+        profileError = null;
+        break;
+      }
+      profileError = error;
+      if (error?.code === '23503') {
+        console.warn('Profile not ready, retrying...');
+        await new Promise(res => setTimeout(res, 600));
+        continue;
+      }
+      break;
+    }
+    if (profileError) throw profileError;
 
-    if (error) throw error;
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const { error } = await supabase
+        .from('teachers')
+        .upsert([{ id: userId, display_name: display || null }], { onConflict: 'id', returning: 'minimal' });
+      if (!error) {
+        lastError = null;
+        break;
+      }
+      lastError = error;
+      if (error?.code === '23503') {
+        console.warn('Profile not ready, retrying...');
+        await new Promise(res => setTimeout(res, 600));
+        continue;
+      }
+      break;
+    }
+    if (lastError) throw lastError;
   } catch (err) {
     console.error('✗ Failed to ensure teachers row:', err);
     throw err;
@@ -158,9 +191,24 @@ export const studentAuthSignUp = async (email, password, fullName) => {
     });
     if (error) throw error;
     if (data?.user?.id) {
-      await supabase
-        .from('students')
-        .insert([{ id: data.user.id }], { returning: 'minimal' });
+      let lastError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const { error } = await supabase
+          .from('students')
+          .insert([{ id: data.user.id }], { returning: 'minimal' });
+        if (!error) {
+          lastError = null;
+          break;
+        }
+        lastError = error;
+        if (error?.code === '23503') {
+          console.warn('Profile not ready, retrying...');
+          await new Promise(res => setTimeout(res, 600));
+          continue;
+        }
+        break;
+      }
+      if (lastError) throw lastError;
     }
     return data.user;
   } catch (err) {
