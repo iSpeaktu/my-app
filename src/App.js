@@ -646,7 +646,7 @@ export default function App() {
                 <div className="flex-1">
                     <h3 className="text-[#00FF94] font-black text-sm mb-1 uppercase tracking-wider">Teacher Shout-out!</h3>
                     <p className="text-white/80 text-sm leading-snug">
-                       Lesson {praise.lesson_id || ''} completed â€” your teacher sent you a <strong>Thumbs Up</strong>! Keep it up!
+                       Lesson {praise.lesson_id || ''} completed your teacher sent you a <strong>Thumbs Up</strong>! Keep it up!
                     </p>
                 </div>
                 <button onClick={dismissPraise} className="p-2 text-white/20 hover:text-white transition-colors">
@@ -2071,10 +2071,13 @@ function TutorDashboard({ onLogout }) {
     
     useEffect(() => {
         let active = true;
-        (async () => {
+        let pollId = null;
+        const fetchStudents = async () => {
             const list = await getTeacherStudents();
             if (active) setStudents(list);
-        })();
+        };
+        fetchStudents();
+        pollId = setInterval(fetchStudents, 10000);
         (async () => {
             const { data: sessionData } = await supabase.auth.getSession();
             const user = sessionData?.session?.user;
@@ -2118,7 +2121,10 @@ function TutorDashboard({ onLogout }) {
               setLocalSentMap(praiseKey, mergedPraises);
             }
         })();
-        return () => { active = false; };
+        return () => {
+            active = false;
+            if (pollId) clearInterval(pollId);
+        };
     }, []);
     
     const filteredStudents = students.filter(s => 
@@ -2496,6 +2502,7 @@ function TutorDashboard({ onLogout }) {
       </div>
     );
 }
+
 
 
 
