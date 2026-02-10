@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherRoster, getStudentHistoryForTeacher, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherRoster, getStudentHistoryForTeacher, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, getAchievements, upsertAchievement, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -182,8 +182,7 @@ export default function App() {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteConfirmed, setInviteConfirmed] = useState(false);
   const [hasAssignedTeacher, setHasAssignedTeacher] = useState(null);
-  const [studentNotifications, setStudentNotifications] = useState([]);
-  const [avatarUrl, setAvatarUrl] = useState('');
+  const [studentNotifications, setStudentNotifications] = useState([]);\r\n  const [studentAchievements, setStudentAchievements] = useState([]);\r\n  const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarLoading, setAvatarLoading] = useState(false);
   
   const [onboardingData, setOnboardingData] = useState({
@@ -225,12 +224,7 @@ export default function App() {
     if (!userId) return { material: null, level: null };
     const cleanupKey = `ispeaktu_history_cleanup_${userId}`;
 
-    const [profile, student, history, notifications] = await Promise.all([
-      getProfile(userId),
-      getStudentProgress(userId),
-      getStudentLessonHistory(userId),
-      getNotifications(userId)
-    ]);
+    const [profile, student, history, notifications, achievements] = await Promise.all([\r\n      getProfile(userId),\r\n      getStudentProgress(userId),\r\n      getStudentLessonHistory(userId),\r\n      getNotifications(userId),\r\n      getAchievements(userId)\r\n    ]);
     const hasStudent = !!student;
     const hasProfile = !!profile;
 
@@ -337,7 +331,7 @@ export default function App() {
       }
     }
 
-    setStudentNotifications(notifications || []);
+    setStudentNotifications(notifications || []);\r\n    setStudentAchievements(achievements || []);
 
     if (!localStorage.getItem(cleanupKey)) {
       try {
@@ -943,7 +937,7 @@ export default function App() {
       { id: 6, name: "Language Master", desc: "Complete 40 lessons", icon: Award, achieved: uniquePassedCount >= 40 },
       { id: 7, name: "Language Legend", desc: "Complete 60 lessons", icon: Trophy, achieved: uniquePassedCount >= 60 },
       { id: 8, name: "Ultimate Sage", desc: "Complete 100 lessons", icon: BrainCircuit, achieved: uniquePassedCount >= 100 },
-    ];
+    ];\r\n\r\n    const achievedNames = badgeData.filter(b => b.achieved).map(b => b.name);\r\n    const achievedKey = achievedNames.slice().sort().join('|');\r\n    const storedKey = (studentAchievements || []).map(a => a.badge_name).sort().join('|');\r\n\r\n    useEffect(() => {\r\n      let active = true;\r\n      (async () => {\r\n        if (!achievedNames.length) return;\r\n        const existing = new Set((studentAchievements || []).map(a => a.badge_name));\r\n        const missing = achievedNames.filter(name => !existing.has(name));\r\n        if (missing.length === 0) return;\r\n        const { data: sessionData } = await supabase.auth.getSession();\r\n        const userId = sessionData?.session?.user?.id;\r\n        if (!userId) return;\r\n        for (const badgeName of missing) {\r\n          const ok = await upsertAchievement(userId, badgeName);\r\n          if (ok && active) {\r\n            setStudentAchievements(prev => {\r\n              const exists = (prev || []).some(a => a.badge_name === badgeName);\r\n              if (exists) return prev;\r\n              return [...(prev || []), { badge_name: badgeName, achieved_at: new Date().toISOString() }];\r\n            });\r\n          }\r\n        }\r\n      })();\r\n      return () => { active = false; };\r\n    }, [achievedKey, storedKey]);\r\n
 
     return (
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
@@ -2535,6 +2529,11 @@ function TutorDashboard({ onLogout }) {
       </div>
     );
 }
+
+
+
+
+
 
 
 
