@@ -293,7 +293,7 @@ export const assignStudentToTeacher = async (userId, teacherUserId) => {
     throw err;
   }
 };
-export const getTeacherStudents = async () => {
+export const getTeacherRoster = async () => {
   try {
     const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
     if (sessionErr) throw sessionErr;
@@ -333,51 +333,50 @@ export const getTeacherStudents = async () => {
       .in('id', studentIds);
     if (profilesErr) throw profilesErr;
 
-    const { data: historyRows, error: historyErr } = await supabase
-      .from('lesson_history')
-      .select('student_id, lesson_id, score, passed, failures, created_at')
-      .in('student_id', studentIds)
-      .order('created_at', { ascending: true });
-    if (historyErr) throw historyErr;
-
     const profileById = new Map((profiles || []).map(p => [p.id, p]));
     const studentById = new Map((students || []).map(s => [s.id, s]));
-    const historyById = new Map();
-    (historyRows || []).forEach(h => {
-      if (!historyById.has(h.student_id)) historyById.set(h.student_id, []);
-      historyById.get(h.student_id).push({
-        date: h.created_at,
-        lessonId: h.lesson_id,
-        score: h.score,
-        passed: h.passed,
-        failures: h.failures || []
-      });
-    });
 
     return studentIds.map(id => {
       const profile = profileById.get(id) || {};
       const student = studentById.get(id) || {};
-      const history = (historyById.get(id) || []).map(h => ({
-        ...h,
-        material: student.current_material_id || null,
-        level: student.current_level || null
-      }));
-      const last = history.length ? history[history.length - 1] : null;
       const display = profile.full_name || profile.username || 'Student';
       return {
         id,
         name: display,
         avatarUrl: profile.avatar_url || null,
         progress: student.current_level || 'Beginner',
-        lastScore: typeof last?.score === 'number' ? last.score : 0,
-        lastLessonId: last?.lessonId || 1,
+        lastScore: 0,
+        lastLessonId: 1,
         lastMaterialId: student.current_material_id || null,
         lastLevel: student.current_level || null,
-        history
+        history: [],
+        historyLoaded: false
       };
     });
   } catch (err) {
-    console.error('getTeacherStudents error:', err);
+    console.error('getTeacherRoster error:', err);
+    return [];
+  }
+};
+
+export const getStudentHistoryForTeacher = async (studentId) => {
+  try {
+    if (!studentId) return [];
+    const { data: historyRows, error: historyErr } = await supabase
+      .from('lesson_history')
+      .select('student_id, lesson_id, score, passed, failures, created_at')
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: true });
+    if (historyErr) throw historyErr;
+    return (historyRows || []).map(h => ({
+      date: h.created_at,
+      lessonId: h.lesson_id,
+      score: h.score,
+      passed: h.passed,
+      failures: h.failures || []
+    }));
+  } catch (err) {
+    console.error('getStudentHistoryForTeacher error:', err);
     return [];
   }
 };

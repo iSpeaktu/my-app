@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherRoster, getStudentHistoryForTeacher, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -646,7 +646,7 @@ export default function App() {
                 <div className="flex-1">
                     <h3 className="text-[#00FF94] font-black text-sm mb-1 uppercase tracking-wider">Teacher Shout-out!</h3>
                     <p className="text-white/80 text-sm leading-snug">
-                       Lesson {praise.lesson_id || ''} completed your teacher sent you a <strong>Thumbs Up</strong>! Keep it up!
+                       Lesson {praise.lesson_id || ''} completed! Your teacher sent you a <strong>Thumbs Up</strong>! Keep it up!
                     </p>
                 </div>
                 <button onClick={dismissPraise} className="p-2 text-white/20 hover:text-white transition-colors">
@@ -2048,6 +2048,7 @@ function TutorDashboard({ onLogout }) {
     const [inviteLink, setInviteLink] = useState('');
     const [inviteError, setInviteError] = useState('');
     const [inviteLoading, setInviteLoading] = useState(false);
+    const [inviteCopied, setInviteCopied] = useState(false);
     const [students, setStudents] = useState([]);
     const [reminders, setReminders] = useState({});
     const [praises, setPraises] = useState({});
@@ -2073,7 +2074,7 @@ function TutorDashboard({ onLogout }) {
         let active = true;
         let pollId = null;
         const fetchStudents = async () => {
-            const list = await getTeacherStudents();
+            const list = await getTeacherRoster();
             if (active) setStudents(list);
         };
         fetchStudents();
@@ -2130,6 +2131,36 @@ function TutorDashboard({ onLogout }) {
     const filteredStudents = students.filter(s => 
         s.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const loadStudentHistory = async (student) => {
+        if (!student || student.historyLoaded) return;
+        const history = await getStudentHistoryForTeacher(student.id);
+        const enriched = (history || []).map(h => ({
+            ...h,
+            material: student.lastMaterialId || null,
+            level: student.lastLevel || null
+        }));
+        const last = enriched.length ? enriched[enriched.length - 1] : null;
+        setStudents(prev => prev.map(s => {
+            if (s.id !== student.id) return s;
+            return {
+                ...s,
+                history: enriched,
+                historyLoaded: true,
+                lastScore: typeof last?.score === 'number' ? last.score : s.lastScore,
+                lastLessonId: last?.lessonId || s.lastLessonId
+            };
+        }));
+        if (selectedStudent?.id === student.id) {
+            setSelectedStudent(prev => ({
+                ...prev,
+                history: enriched,
+                historyLoaded: true,
+                lastScore: typeof last?.score === 'number' ? last.score : prev.lastScore,
+                lastLessonId: last?.lessonId || prev.lastLessonId
+            }));
+        }
+    };
     
     const handleRemind = async (e, s, lessonId) => {
         e.stopPropagation();
@@ -2419,12 +2450,14 @@ function TutorDashboard({ onLogout }) {
                   onClick={async () => {
                     if (navigator?.clipboard?.writeText) {
                       await navigator.clipboard.writeText(inviteLink);
+                      setInviteCopied(true);
+                      setTimeout(() => setInviteCopied(false), 2000);
                     }
                   }}
                   aria-label="Copy invite link to clipboard"
                   className="px-3 py-2 rounded-xl bg-[#00F2FF] text-[#0A0A0C] text-[10px] font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all"
                 >
-                  Copy
+                  {inviteCopied ? 'Copied' : 'Copy'}
                 </button>
               </div>
             )}
@@ -2471,8 +2504,8 @@ function TutorDashboard({ onLogout }) {
                 return (
                     <div 
                         key={s.id} 
-                        onClick={() => { setSelectedStudent(s); setExpandedQuiz(null); }}
-                        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && (e.target === e.currentTarget)) { e.preventDefault(); setSelectedStudent(s); setExpandedQuiz(null); } }}
+                        onClick={() => { setSelectedStudent(s); setExpandedQuiz(null); loadStudentHistory(s); }}
+                        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && (e.target === e.currentTarget)) { e.preventDefault(); setSelectedStudent(s); setExpandedQuiz(null); loadStudentHistory(s); } }}
                         role="button"
                         tabIndex={0}
                         aria-label={`View details for student ${s.name}, ${s.progress} level, ${s.lastScore}% score`}
@@ -2502,6 +2535,7 @@ function TutorDashboard({ onLogout }) {
       </div>
     );
 }
+
 
 
 
