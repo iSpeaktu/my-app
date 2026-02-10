@@ -457,12 +457,12 @@ export const redeemTeacherInvite = async (token) => {
     if (!token) throw new Error('Token required');
     const { data, error } = await supabase
       .from('teacher_invites')
-      .select('teacher_user_id, expires_at')
+      .select('teacher_id, expires_at')
       .eq('token', token)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
     if (error) throw error;
-    return data?.teacher_user_id || null;
+    return data?.teacher_id || null;
   } catch (err) {
     console.error('redeemTeacherInvite error:', err);
     throw err;

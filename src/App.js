@@ -1010,6 +1010,21 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const urlToken = getInviteToken();
+    if (!urlToken) return;
+    setInviteToken(urlToken);
+    setInviteConfirmed(false);
+    let active = true;
+    (async () => {
+      const teacherUserId = await redeemTeacherInvite(urlToken);
+      if (!teacherUserId || !active) return;
+      const name = await getTeacherNameByUserId(teacherUserId);
+      if (name && active) setInviteTeacherName(name);
+    })();
+    return () => { active = false; };
+  }, []);
+
   const getStoredInviteToken = () => inviteToken || null;
   const clearStoredInviteToken = () => setInviteToken(null);
   const getInviteConfirmed = () => inviteConfirmed;
