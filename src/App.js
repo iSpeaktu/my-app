@@ -218,6 +218,8 @@ export default function App() {
       getStudentLessonHistory(userId),
       getNotifications(userId)
     ]);
+    const hasStudent = !!student;
+    const hasProfile = !!profile;
 
     const normalized = (
       profile?.username ||
@@ -290,9 +292,15 @@ export default function App() {
     if (student?.teacher_id) {
       const teacherName = await getTeacherNameByUserId(student.teacher_id);
       if (teacherName) setStudentTeacherName(teacherName);
+      if (getStoredInviteToken()) {
+        clearInviteToken();
+        clearStoredInviteToken();
+        setInviteConfirmedValue(false);
+        setInviteTeacherName('');
+      }
     }
 
-    return { material, level };
+    return { material, level, hasStudent, hasProfile };
   };
 
   
@@ -316,9 +324,9 @@ export default function App() {
         return;
       }
 
-      const { material, level } = await loadStudentData(sessionUser);
+      const { material, level, hasStudent, hasProfile } = await loadStudentData(sessionUser);
       if (!active) return;
-      setView(material && level ? 'dashboard' : 'ob_screen1');
+      setView(material && level ? 'dashboard' : ((hasStudent || hasProfile) ? 'dashboard' : 'ob_screen1'));
       setLoading(false);
     })();
     return () => { active = false; };
@@ -462,7 +470,7 @@ export default function App() {
 
   // --- VIEWS ---
   const Dashboard = () => {
-    const reminder = studentNotifications.find(n => n.type === 'remind') || null;
+    const reminder = studentNotifications.find(n => n.type === 'reminder') || null;
     const praise = studentNotifications.find(n => n.type === 'praise') || null;
     
     const weeklyTarget = onboardingData.lessonsPerWeek || 3;
@@ -988,8 +996,8 @@ export default function App() {
       setLoginLoading(true);
       setLoginError('');
       const user = await studentAuthSignIn(email.toLowerCase(), password);
-      const { material, level } = await loadStudentData(user);
-      setView(material && level ? 'dashboard' : 'ob_screen1');
+      const { material, level, hasStudent, hasProfile } = await loadStudentData(user);
+      setView(material && level ? 'dashboard' : ((hasStudent || hasProfile) ? 'dashboard' : 'ob_screen1'));
     } catch (error) {
       setLoginError(error.message || 'Email login failed');
       console.error('Email login error:', error);
@@ -1013,10 +1021,25 @@ export default function App() {
   useEffect(() => {
     const urlToken = getInviteToken();
     if (!urlToken) return;
-    setInviteToken(urlToken);
-    setInviteConfirmed(false);
+    // Always strip invite token from URL after capture to prevent persistent prompts on reload
+    clearInviteToken();
     let active = true;
     (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (userId) {
+        const studentRow = await getStudentProgress(userId);
+        if (studentRow?.teacher_id) {
+          clearInviteToken();
+          clearStoredInviteToken();
+          setInviteConfirmedValue(false);
+          setInviteTeacherName('');
+          return;
+        }
+      }
+      if (!active) return;
+      setInviteToken(urlToken);
+      setInviteConfirmed(false);
       const teacherUserId = await redeemTeacherInvite(urlToken);
       if (!teacherUserId || !active) return;
       const name = await getTeacherNameByUserId(teacherUserId);
@@ -1047,6 +1070,28 @@ export default function App() {
     if (!token) return;
     setInviteConfirmedValue(true);
   };
+
+  useEffect(() => {
+    if (!inviteConfirmed || !getStoredInviteToken()) return;
+    let active = true;
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      if (!user || user.user_metadata?.role === 'teacher') return;
+      try {
+        const teacherUserId = await redeemTeacherInvite(getStoredInviteToken());
+        if (teacherUserId && active) {
+          await assignStudentToTeacher(user.id, teacherUserId);
+          clearInviteToken();
+          clearStoredInviteToken();
+          setInviteConfirmedValue(false);
+        }
+      } catch (err) {
+        console.error('Invite assign failed:', err);
+      }
+    })();
+    return () => { active = false; };
+  }, [inviteConfirmed]);
 
   const cancelInvite = () => {
     clearInviteToken();
@@ -1191,8 +1236,8 @@ export default function App() {
                         console.error('Invite assign failed:', e);
                       }
                     }
-                    const { material, level } = await loadStudentData(user);
-                    setView(material && level ? 'dashboard' : 'ob_screen1');
+                    const { material, level, hasStudent, hasProfile } = await loadStudentData(user);
+                    setView(material && level ? 'dashboard' : ((hasStudent || hasProfile) ? 'dashboard' : 'ob_screen1'));
                   } catch (err) {
                     setLoginError(err.message || 'Email login failed');
                   } finally { setLoginLoading(false); }
@@ -1780,7 +1825,7 @@ function TutorDashboard({ onLogout }) {
             const { data: sessionData } = await supabase.auth.getSession();
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId) return;
-            await createNotification(s.id, 'remind', teacherId, s.lastLessonId || null);
+            await createNotification(s.id, 'reminder', teacherId, s.lastLessonId || null);
             setReminders({ ...reminders, [s.id]: true });
         } catch (err) {
             console.error('Failed to send reminder:', err);

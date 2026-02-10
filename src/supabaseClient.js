@@ -272,6 +272,7 @@ export const studentAuthResetPassword = async (email, redirectTo) => {
 export const assignStudentToTeacher = async (userId, teacherUserId) => {
   try {
     if (!userId || !teacherUserId) throw new Error('User and teacher required');
+    if (userId === teacherUserId) throw new Error('Student and teacher cannot be the same user');
     
     // Perform the student update
     const { error } = await supabase
@@ -305,14 +306,26 @@ export const getTeacherStudents = async () => {
       .eq('teacher_id', userId);
     if (classroomErr) throw classroomErr;
 
-    const studentIds = (classroomRows || []).map(r => r.student_id).filter(Boolean);
-    if (studentIds.length === 0) return [];
+    let studentIds = (classroomRows || []).map(r => r.student_id).filter(Boolean);
+    let students = null;
+    if (studentIds.length === 0) {
+      const { data: byTeacher, error: byTeacherErr } = await supabase
+        .from('students')
+        .select('id, teacher_id, current_material_id, current_level, xp, weekly_streak')
+        .eq('teacher_id', userId);
+      if (byTeacherErr) throw byTeacherErr;
+      students = byTeacher || [];
+      studentIds = students.map(s => s.id).filter(Boolean);
+    } else {
+      const { data: byIds, error: studentsErr } = await supabase
+        .from('students')
+        .select('id, teacher_id, current_material_id, current_level, xp, weekly_streak')
+        .in('id', studentIds);
+      if (studentsErr) throw studentsErr;
+      students = byIds || [];
+    }
 
-    const { data: students, error: studentsErr } = await supabase
-      .from('students')
-      .select('id, teacher_id, current_material_id, current_level, xp, weekly_streak')
-      .in('id', studentIds);
-    if (studentsErr) throw studentsErr;
+    if (studentIds.length === 0) return [];
 
     const { data: profiles, error: profilesErr } = await supabase
       .from('profiles')
@@ -543,19 +556,21 @@ export const getStudentLessonHistory = async (userId) => {
 export const createNotification = async (recipientUserId, type, senderUserId = null, lessonId = null) => {
   try {
     if (!recipientUserId) throw new Error('Recipient user ID required');
-    const { data, error } = await supabase
+    let senderId = senderUserId;
+    if (!senderId) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      senderId = sessionData?.session?.user?.id || null;
+    }
+    if (!senderId) throw new Error('Sender user ID required');
+    const { error } = await supabase
       .from('notifications')
       .insert([{
         recipient_id: recipientUserId,
-        sender_id: senderUserId || null,
+        sender_id: senderId,
         type: type, // 'remind' or 'praise'
-        lesson_id: lessonId || null,
-        created_at: new Date()
-      }])
-      .select()
-      .maybeSingle();
+        lesson_id: lessonId || null
+      }], { returning: 'minimal' });
     if (error) throw error;
-    return data;
   } catch (err) {
     console.error('createNotification error:', err);
     throw err;
