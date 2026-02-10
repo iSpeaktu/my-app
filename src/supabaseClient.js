@@ -191,11 +191,31 @@ export const studentAuthSignUp = async (email, password, fullName) => {
     });
     if (error) throw error;
     if (data?.user?.id) {
+      const userId = data.user.id;
+      let profileError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const { error } = await supabase
+          .from('profiles')
+          .upsert([{ id: userId, full_name: fullName || null, role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+        if (!error) {
+          profileError = null;
+          break;
+        }
+        profileError = error;
+        if (error?.code === '23503') {
+          console.warn('Profile not ready, retrying...');
+          await new Promise(res => setTimeout(res, 600));
+          continue;
+        }
+        break;
+      }
+      if (profileError) throw profileError;
+
       let lastError = null;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const { error } = await supabase
           .from('students')
-          .insert([{ id: data.user.id }], { returning: 'minimal' });
+          .insert([{ id: userId }], { returning: 'minimal' });
         if (!error) {
           lastError = null;
           break;
@@ -416,17 +436,16 @@ export const createTeacherInvite = async () => {
     const token = generateInviteToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('teacher_invites')
       .insert([{
         teacher_id: userId,
         token,
         expires_at: expiresAt,
         created_at: new Date()
-      }])
-      .select()
-      .maybeSingle();
+      }], { returning: 'minimal' });
     if (error) throw error;
+    return { token };
   } catch (err) {
     console.error('createTeacherInvite error:', err);
     throw err;
