@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType } from './supabaseClient';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -181,6 +181,7 @@ export default function App() {
   const [studentTeacherName, setStudentTeacherName] = useState('');
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteConfirmed, setInviteConfirmed] = useState(false);
+  const [hasAssignedTeacher, setHasAssignedTeacher] = useState(null);
   const [studentNotifications, setStudentNotifications] = useState([]);
   
   const [onboardingData, setOnboardingData] = useState({
@@ -208,9 +209,19 @@ export default function App() {
     return data;
   };
 
+  const getWeekStartISO = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = (day + 6) % 7;
+    d.setDate(d.getDate() - diff);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  };
+
   const loadStudentData = async (sessionUser) => {
     const userId = sessionUser?.id;
     if (!userId) return { material: null, level: null };
+    const cleanupKey = `ispeaktu_history_cleanup_${userId}`;
 
     const [profile, student, history, notifications] = await Promise.all([
       getProfile(userId),
@@ -246,27 +257,34 @@ export default function App() {
 
     if (!student) {
       try {
-        await upsertStudentProfile(userId, {
-          current_material_id: null,
-          current_level: null,
-          xp: 0,
-          weekly_streak: 0
-        });
+        // Ensure a student row exists without overwriting existing progress
+        await supabase
+          .from('students')
+          .upsert([{ id: userId }], { onConflict: 'id', returning: 'minimal' });
       } catch (err) {
         console.error('Failed to create student row:', err);
       }
     }
 
-    const material = MATERIALS_DATA.find(m => m.id === student?.current_material_id) || null;
-    const level = student?.current_level || null;
+    const rawMaterialId = student?.current_material_id || null;
+    const materialFromDb = rawMaterialId
+      ? (MATERIALS_DATA.find(m => m.id === rawMaterialId) ||
+         MATERIALS_DATA.find(m => m.title.toLowerCase() === String(rawMaterialId).toLowerCase()) ||
+         MATERIALS_DATA.find(m => m.id === String(rawMaterialId).toLowerCase().trim()) ||
+         null)
+      : null;
+    const levelFromDb = student?.current_level || null;
+    const material = materialFromDb || onboardingData.material || null;
+    const level = levelFromDb || onboardingData.level || null;
     const nextOnboarding = {
       material,
       level,
-      lessonsPerWeek: onboardingData.lessonsPerWeek || 3
+      lessonsPerWeek: typeof student?.lessons_per_week === 'number'
+        ? student.lessons_per_week
+        : (onboardingData.lessonsPerWeek || 3)
     };
     setOnboardingData(nextOnboarding);
 
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const completedHistory = (history || []).map(h => ({
       date: h.created_at || new Date().toISOString(),
       lessonId: h.lesson_id,
@@ -277,19 +295,56 @@ export default function App() {
       failures: h.failures || []
     }));
 
-    const weeklyActivityCount = completedHistory.filter(h => h.passed && new Date(h.date) >= weekAgo).length;
-    const weeklyStreak = typeof student?.weekly_streak === 'number' ? student.weekly_streak : weeklyActivityCount;
+    const now = new Date();
+    const currentWeekStart = new Date(getWeekStartISO(now));
+    const currentWeekHistory = completedHistory.filter(h => h.passed && new Date(h.date) >= currentWeekStart);
+    const weeklyActivityCount = currentWeekHistory.length;
+    const storedStreak = typeof student?.weekly_streak === 'number' ? student.weekly_streak : 0;
+    const lastActivityDate = student?.last_activity_date || completedHistory[0]?.date || now.toISOString();
+    const lastWeekStart = new Date(getWeekStartISO(lastActivityDate));
+    const isSameWeek = lastWeekStart.getTime() === currentWeekStart.getTime();
+
+    const target = typeof student?.lessons_per_week === 'number'
+      ? student.lessons_per_week
+      : (onboardingData.lessonsPerWeek || 3);
+    const prevWeekStart = new Date(currentWeekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    const prevWeekEnd = new Date(currentWeekStart);
+    const prevWeekHistory = completedHistory.filter(h => {
+      const d = new Date(h.date);
+      return h.passed && d >= prevWeekStart && d < prevWeekEnd;
+    });
+    const prevWeekMet = prevWeekHistory.length >= target;
+    const weeklyStreak = isSameWeek ? storedStreak : (prevWeekMet ? storedStreak : 0);
 
     setStreakState({
       weeklyStreak,
       weeklyActivityCount,
-      lastResetDate: new Date().toISOString(),
+      lastResetDate: currentWeekStart.toISOString(),
       completedHistory
     });
 
+    if (!isSameWeek && storedStreak !== weeklyStreak) {
+      try {
+        await updateStudentProgress(userId, { weekly_streak: weeklyStreak });
+      } catch (err) {
+        console.error('Failed to sync weekly streak on load:', err);
+      }
+    }
+
     setStudentNotifications(notifications || []);
 
+    if (!localStorage.getItem(cleanupKey)) {
+      try {
+        const cleaned = await cleanupLessonHistoryLatest(userId);
+        if (cleaned) localStorage.setItem(cleanupKey, 'done');
+      } catch (err) {
+        console.error('Failed to cleanup lesson history:', err);
+      }
+    }
+
     if (student?.teacher_id) {
+      setHasAssignedTeacher(true);
       const teacherName = await getTeacherNameByUserId(student.teacher_id);
       if (teacherName) setStudentTeacherName(teacherName);
       if (getStoredInviteToken()) {
@@ -298,6 +353,8 @@ export default function App() {
         setInviteConfirmedValue(false);
         setInviteTeacherName('');
       }
+    } else {
+      setHasAssignedTeacher(false);
     }
 
     return { material, level, hasStudent, hasProfile };
@@ -351,6 +408,9 @@ export default function App() {
     if (updates.onboardingData) {
       studentUpdates.current_material_id = updates.onboardingData.material?.id || null;
       studentUpdates.current_level = updates.onboardingData.level || null;
+      if (typeof updates.onboardingData.lessonsPerWeek === 'number') {
+        studentUpdates.lessons_per_week = updates.onboardingData.lessonsPerWeek;
+      }
     }
     if (updates.streakState) {
       studentUpdates.weekly_streak = updates.streakState.weeklyStreak || 0;
@@ -383,12 +443,49 @@ export default function App() {
       }
     ];
 
-    const weeklyActivityCount = passed ? streakState.weeklyActivityCount + 1 : streakState.weeklyActivityCount;
-    const weeklyStreak = passed ? streakState.weeklyStreak + 1 : streakState.weeklyStreak;
+    const now = new Date();
+    const currentWeekStart = new Date(getWeekStartISO(now));
+    const lastWeekStart = streakState.lastResetDate ? new Date(streakState.lastResetDate) : currentWeekStart;
+    const isSameWeek = lastWeekStart.getTime() === currentWeekStart.getTime();
+
+    const target = onboardingData.lessonsPerWeek || 3;
+    const alreadyPassed = streakState.completedHistory.some(h =>
+      h.passed &&
+      h.lessonId === selection.lessonNumber &&
+      h.material === selection.material?.id &&
+      h.level === selection.level
+    );
+
+    let weeklyActivityCount = streakState.weeklyActivityCount;
+    if (passed && !alreadyPassed) {
+      weeklyActivityCount = isSameWeek ? weeklyActivityCount + 1 : 1;
+    } else if (!isSameWeek) {
+      weeklyActivityCount = 0;
+    }
+
+    const prevWeekStart = new Date(currentWeekStart);
+    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+    const prevWeekEnd = new Date(currentWeekStart);
+    const prevWeekHistory = streakState.completedHistory.filter(h => {
+      const d = new Date(h.date);
+      return h.passed && d >= prevWeekStart && d < prevWeekEnd;
+    });
+    const prevWeekMet = prevWeekHistory.length >= target;
+
+    let weeklyStreak = streakState.weeklyStreak;
+    const alreadyMetThisWeek = isSameWeek && streakState.weeklyActivityCount >= target;
+    if (!isSameWeek) {
+      weeklyStreak = prevWeekMet ? weeklyStreak : 0;
+    }
+    if (passed && weeklyActivityCount >= target && !alreadyMetThisWeek) {
+      weeklyStreak = prevWeekMet ? (weeklyStreak + 1) : Math.max(weeklyStreak, 1);
+    }
+
     const newState = {
       ...streakState,
       weeklyActivityCount,
       weeklyStreak,
+      lastResetDate: currentWeekStart.toISOString(),
       completedHistory: updatedHistory
     };
 
@@ -406,11 +503,12 @@ export default function App() {
           xp: computedXp,
           weekly_streak: weeklyStreak,
           current_material_id: selection.material?.id || null,
-          current_level: selection.level || null
+          current_level: selection.level || null,
+          last_activity_date: passed ? now.toISOString() : undefined
         });
 
         if (passed) {
-          await clearNotificationsByType(userId, 'remind', selection.lessonNumber);
+          await clearNotificationsByType(userId, 'reminder', selection.lessonNumber);
           await clearNotificationsByType(userId, 'praise');
           const refreshed = await getNotifications(userId);
           setStudentNotifications(refreshed || []);
@@ -515,7 +613,7 @@ export default function App() {
                 <div className="flex-1">
                     <h3 className="text-[#00FF94] font-black text-sm mb-1 uppercase tracking-wider">Teacher Shout-out!</h3>
                     <p className="text-white/80 text-sm leading-snug">
-                       Your teacher sent you a <strong>Thumbs Up</strong> for your great work! Keep it up!
+                       Lesson {praise.lesson_id || ''} completed â€” your teacher sent you a <strong>Thumbs Up</strong>! Keep it up!
                     </p>
                 </div>
                 <button onClick={dismissPraise} className="p-2 text-white/20 hover:text-white transition-colors">
@@ -1018,38 +1116,95 @@ export default function App() {
     }
   };
 
+  const INVITE_TOKEN_KEY = 'ispeaktu_invite_token';
+  const getStoredInviteToken = () => inviteToken || localStorage.getItem(INVITE_TOKEN_KEY) || null;
+  const setStoredInviteToken = (token) => {
+    setInviteToken(token);
+    if (token) {
+      localStorage.setItem(INVITE_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(INVITE_TOKEN_KEY);
+    }
+  };
+  const clearStoredInviteToken = () => setStoredInviteToken(null);
+
   useEffect(() => {
     const urlToken = getInviteToken();
-    if (!urlToken) return;
-    // Always strip invite token from URL after capture to prevent persistent prompts on reload
-    clearInviteToken();
+    const storedToken = getStoredInviteToken();
+    const token = urlToken || storedToken;
+    if (!token) return;
+    // Persist token so refreshes still allow confirmation, then strip from URL
+    if (urlToken) {
+      setStoredInviteToken(urlToken);
+      clearInviteToken();
+    }
+    setInviteTeacherName('');
     let active = true;
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
       if (userId) {
         const studentRow = await getStudentProgress(userId);
+        if (!studentRow) {
+          setHasAssignedTeacher(null);
+          return;
+        }
         if (studentRow?.teacher_id) {
           clearInviteToken();
           clearStoredInviteToken();
           setInviteConfirmedValue(false);
           setInviteTeacherName('');
+          setHasAssignedTeacher(true);
           return;
         }
+        setHasAssignedTeacher(false);
+      } else {
+        setHasAssignedTeacher(false);
       }
       if (!active) return;
-      setInviteToken(urlToken);
+      setInviteToken(token);
       setInviteConfirmed(false);
-      const teacherUserId = await redeemTeacherInvite(urlToken);
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let intervalId = null;
+    (async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData?.session?.user;
+      if (!user || user.user_metadata?.role === 'teacher') return;
+      const refresh = async () => {
+        try {
+          const latest = await getNotifications(user.id);
+          if (active) setStudentNotifications(latest || []);
+        } catch (err) {
+          console.error('Failed to refresh notifications:', err);
+        }
+      };
+      await refresh();
+      intervalId = setInterval(refresh, 8000);
+    })();
+    return () => {
+      active = false;
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    const token = getStoredInviteToken();
+    if (hasAssignedTeacher !== false || !token || inviteTeacherName) return;
+    let active = true;
+    (async () => {
+      const teacherUserId = await redeemTeacherInvite(token);
       if (!teacherUserId || !active) return;
       const name = await getTeacherNameByUserId(teacherUserId);
       if (name && active) setInviteTeacherName(name);
     })();
     return () => { active = false; };
-  }, []);
+  }, [hasAssignedTeacher, inviteTeacherName]);
 
-  const getStoredInviteToken = () => inviteToken || null;
-  const clearStoredInviteToken = () => setInviteToken(null);
   const getInviteConfirmed = () => inviteConfirmed;
   const setInviteConfirmedValue = (val) => {
     setInviteConfirmed(!!val);
@@ -1085,6 +1240,7 @@ export default function App() {
           clearInviteToken();
           clearStoredInviteToken();
           setInviteConfirmedValue(false);
+          setInviteTeacherName('');
         }
       } catch (err) {
         console.error('Invite assign failed:', err);
@@ -1136,7 +1292,7 @@ export default function App() {
         .animate-swing { animation: swing 2s ease infinite; }
       `}</style>
       {/* Invite confirmation modal - shown when an invite exists but is not yet confirmed */}
-      {inviteTeacherName && !inviteConfirmed && getStoredInviteToken() && (
+      {inviteTeacherName && !inviteConfirmed && getStoredInviteToken() && hasAssignedTeacher === false && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6">
           <div className="max-w-lg w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl p-6 text-center">
             <h3 className="text-xl font-extrabold mb-2">Confirm Teacher Invitation</h3>
@@ -1177,6 +1333,8 @@ export default function App() {
             <div className="relative group">
                <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={18} />
                <input 
+                 id="student-login-email"
+                 name="student_login_email"
                  type="text" placeholder="Email or username" value={email}
                  onChange={(e) => setEmail(e.target.value)}
                  disabled={loginLoading}
@@ -1187,6 +1345,8 @@ export default function App() {
             <div className="relative group">
                <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                <input 
+                 id="student-login-password"
+                 name="student_login_password"
                  type="password" placeholder="Password" value={password}
                  onChange={(e) => setPassword(e.target.value)}
                  disabled={loginLoading}
@@ -1231,6 +1391,7 @@ export default function App() {
                           clearInviteToken();
                           clearStoredInviteToken();
                           setInviteConfirmedValue(false);
+                          setInviteTeacherName('');
                         }
                       } catch (e) {
                         console.error('Invite assign failed:', e);
@@ -1297,6 +1458,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="tutor-login-email"
+                     name="tutor_login_email"
                      type="email" placeholder="Email" value={email}
                      onChange={(e) => setEmail(e.target.value)}
                      disabled={loginLoading}
@@ -1306,6 +1469,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="tutor-login-password"
+                     name="tutor_login_password"
                      type="password" placeholder="Password" value={password}
                      onChange={(e) => setPassword(e.target.value)}
                      disabled={loginLoading}
@@ -1356,6 +1521,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={20} />
                    <input 
+                     id="tutor-signup-fullname"
+                     name="tutor_signup_fullname"
                      autoFocus type="text" placeholder="Full name" value={fullName}
                      onChange={(e) => setFullName(e.target.value)}
                      disabled={loginLoading}
@@ -1366,6 +1533,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="tutor-signup-email"
+                     name="tutor_signup_email"
                      type="email" placeholder="Email" value={email}
                      onChange={(e) => setEmail(e.target.value)}
                      disabled={loginLoading}
@@ -1376,6 +1545,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="tutor-signup-password"
+                     name="tutor_signup_password"
                      type="password" placeholder="Password" value={password}
                      onChange={(e) => setPassword(e.target.value)}
                      disabled={loginLoading}
@@ -1449,6 +1620,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="User" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={20} />
                    <input 
+                     id="student-signup-fullname"
+                     name="student_signup_fullname"
                      autoFocus type="text" placeholder="Full name" value={fullName}
                      onChange={(e) => setFullName(e.target.value)}
                      disabled={loginLoading}
@@ -1459,6 +1632,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="student-signup-email"
+                     name="student_signup_email"
                      type="email" placeholder="Email" value={email}
                      onChange={(e) => setEmail(e.target.value)}
                      disabled={loginLoading}
@@ -1469,6 +1644,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Lock" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="student-signup-password"
+                     name="student_signup_password"
                      type="password" placeholder="Password" value={password}
                      onChange={(e) => setPassword(e.target.value)}
                      disabled={loginLoading}
@@ -1503,6 +1680,7 @@ export default function App() {
                               clearInviteToken();
                               clearStoredInviteToken();
                               setInviteConfirmedValue(false);
+                              setInviteTeacherName('');
                             }
                           } catch (e) {
                             console.error('Invite assign failed:', e);
@@ -1554,6 +1732,8 @@ export default function App() {
                 <div className="relative group">
                    <Icon name="Mail" className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 transition-colors" size={18} />
                    <input 
+                     id="reset-email"
+                     name="reset_email"
                      autoFocus type="text" placeholder="Email or username" value={email}
                      onChange={(e) => setEmail(e.target.value)}
                      disabled={loginLoading}
@@ -1601,6 +1781,25 @@ export default function App() {
       {view === 'ob_screen1' && (
         <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in">
             <h2 className="text-2xl font-bold mb-10 text-center leading-snug">Do you study English with<br/><span className="text-[#00F2FF]">iSpeaktu?</span></h2>
+            <div className="w-full mb-8">
+                <div className="flex justify-between items-center mb-2 text-[10px] font-black uppercase tracking-widest text-white/40">
+                    <span>Lessons Per Week</span>
+                    <span className="text-[#00F2FF]">{onboardingData.lessonsPerWeek}</span>
+                </div>
+                <input
+                    id="onboarding-lessons-per-week"
+                    name="onboarding_lessons_per_week"
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={onboardingData.lessonsPerWeek}
+                    onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setOnboardingData({ ...onboardingData, lessonsPerWeek: val });
+                    }}
+                    className="w-full accent-[#00F2FF]"
+                />
+            </div>
             <button onClick={() => setView('ob_screen2')} aria-label="Yes, I study English with iSpeaktu" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-4 font-bold text-lg hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">Yes,</button>
             <button onClick={() => { persistData({ userName, onboardingData, streakState }); setView('dashboard'); }} aria-label="No, I prefer self-studying" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl font-bold text-lg hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">No, I'm self-studying</button>
         </div>
@@ -1653,6 +1852,8 @@ export default function App() {
                             <label className="text-[9px] font-black uppercase tracking-widest text-white/40 ml-2">Name</label>
                             <div className="relative group">
                                 <input 
+                                    id="settings-username"
+                                    name="settings_username"
                                     type="text" 
                                     value={userName} 
                                     onChange={(e) => {
@@ -1676,6 +1877,8 @@ export default function App() {
                                 <span className="text-xs font-black text-[#00F2FF]">{onboardingData.lessonsPerWeek} Lessons</span>
                             </div>
                             <input 
+                                id="settings-lessons-per-week"
+                                name="settings_lessons_per_week"
                                 type="range" 
                                 min="1" 
                                 max="10" 
@@ -1770,6 +1973,17 @@ function TutorDashboard({ onLogout }) {
     const [students, setStudents] = useState([]);
     const [reminders, setReminders] = useState({});
     const [praises, setPraises] = useState({});
+
+    const getLocalSentMap = (key) => {
+        try {
+            return JSON.parse(localStorage.getItem(key) || '{}');
+        } catch {
+            return {};
+        }
+    };
+    const setLocalSentMap = (key, value) => {
+        localStorage.setItem(key, JSON.stringify(value || {}));
+    };
     
     useEffect(() => {
         let active = true;
@@ -1789,6 +2003,14 @@ function TutorDashboard({ onLogout }) {
             const { data: sessionData } = await supabase.auth.getSession();
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId || !active) return;
+            const reminderKey = `ispeaktu_tutor_reminders_${teacherId}`;
+            const praiseKey = `ispeaktu_tutor_praises_${teacherId}`;
+            const localReminders = getLocalSentMap(reminderKey);
+            const localPraises = getLocalSentMap(praiseKey);
+            if (active) {
+              setReminders(localReminders);
+              setPraises(localPraises);
+            }
             const { data: sent, error } = await supabase
               .from('notifications')
               .select('recipient_id, type')
@@ -1800,12 +2022,16 @@ function TutorDashboard({ onLogout }) {
             const r = {};
             const p = {};
             (sent || []).forEach(n => {
-              if (n.type === 'remind') r[n.recipient_id] = true;
+              if (n.type === 'reminder') r[n.recipient_id] = true;
               if (n.type === 'praise') p[n.recipient_id] = true;
             });
             if (active) {
-              setReminders(r);
-              setPraises(p);
+              const mergedReminders = { ...localReminders, ...r };
+              const mergedPraises = { ...localPraises, ...p };
+              setReminders(mergedReminders);
+              setPraises(mergedPraises);
+              setLocalSentMap(reminderKey, mergedReminders);
+              setLocalSentMap(praiseKey, mergedPraises);
             }
         })();
         return () => { active = false; };
@@ -1826,7 +2052,10 @@ function TutorDashboard({ onLogout }) {
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId) return;
             await createNotification(s.id, 'reminder', teacherId, s.lastLessonId || null);
-            setReminders({ ...reminders, [s.id]: true });
+            const reminderKey = `ispeaktu_tutor_reminders_${teacherId}`;
+            const next = { ...reminders, [s.id]: true };
+            setReminders(next);
+            setLocalSentMap(reminderKey, next);
         } catch (err) {
             console.error('Failed to send reminder:', err);
         }
@@ -1839,7 +2068,10 @@ function TutorDashboard({ onLogout }) {
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId) return;
             await createNotification(s.id, 'praise', teacherId, s.lastLessonId || null);
-            setPraises({ ...praises, [s.id]: true });
+            const praiseKey = `ispeaktu_tutor_praises_${teacherId}`;
+            const next = { ...praises, [s.id]: true };
+            setPraises(next);
+            setLocalSentMap(praiseKey, next);
         } catch (err) {
             console.error('Failed to send praise:', err);
         }
@@ -2045,6 +2277,8 @@ function TutorDashboard({ onLogout }) {
             {inviteLink && (
               <div className="mt-2 flex items-center gap-2">
                 <input
+                  id="invite-link"
+                  name="invite_link"
                   readOnly
                   value={inviteLink}
                   aria-label="Invite link URL"
@@ -2070,6 +2304,8 @@ function TutorDashboard({ onLogout }) {
         <div className="relative mb-10 group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#00F2FF] transition-colors" size={18} />
             <input 
+                id="tutor-student-search"
+                name="tutor_student_search"
                 type="text" 
                 placeholder="Find a student..." 
                 aria-label="Search for a student by name"

@@ -486,7 +486,31 @@ export const redeemTeacherInvite = async (token) => {
 export const recordLessonHistory = async (studentUserId, lessonId, score, passed, failures = []) => {
   try {
     if (!studentUserId) throw new Error('Student user ID required');
-    const { data, error } = await supabase
+    const { data: existing, error: fetchError } = await supabase
+      .from('lesson_history')
+      .select('id')
+      .eq('student_id', studentUserId)
+      .eq('lesson_id', lessonId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+
+    if (existing?.id) {
+      const { error: updateError } = await supabase
+        .from('lesson_history')
+        .update({
+          score,
+          passed,
+          failures: failures || [],
+          created_at: new Date()
+        })
+        .eq('id', existing.id);
+      if (updateError) throw updateError;
+      return;
+    }
+
+    const { error } = await supabase
       .from('lesson_history')
       .insert([{
         student_id: studentUserId,
@@ -495,9 +519,7 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
         passed,
         failures: failures || [],
         created_at: new Date()
-      }])
-      .select()
-      .maybeSingle();
+      }], { returning: 'minimal' });
     if (error) throw error;
   } catch (err) {
     console.error('recordLessonHistory error:', err);
@@ -530,6 +552,7 @@ export const getStudentProgress = async (userId) => {
       .eq('id', userId)
       .maybeSingle();
     if (error) throw error;
+    return data || null;
   } catch (err) {
     console.error('getStudentProgress error:', err);
     return null;
@@ -549,6 +572,38 @@ export const getStudentLessonHistory = async (userId) => {
   } catch (err) {
     console.error('getStudentLessonHistory error:', err);
     return [];
+  }
+};
+
+export const cleanupLessonHistoryLatest = async (userId) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    const { data, error } = await supabase
+      .from('lesson_history')
+      .select('id, lesson_id, created_at')
+      .eq('student_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const seen = new Set();
+    const toDelete = [];
+    (data || []).forEach(row => {
+      const key = String(row.lesson_id || '');
+      if (seen.has(key)) {
+        toDelete.push(row.id);
+      } else {
+        seen.add(key);
+      }
+    });
+    if (toDelete.length === 0) return true;
+    const { error: delErr } = await supabase
+      .from('lesson_history')
+      .delete()
+      .in('id', toDelete);
+    if (delErr) throw delErr;
+    return true;
+  } catch (err) {
+    console.error('cleanupLessonHistoryLatest error:', err);
+    return false;
   }
 };
 
