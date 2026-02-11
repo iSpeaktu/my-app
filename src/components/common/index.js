@@ -1,5 +1,5 @@
 // Barrel export for common components
-export { Card } from './Card';
-export { Header } from './Header';
-export { Icon, iconsMap } from './Icon';
-export { BottomNav } from './BottomNav';
+export { default as Card } from './Card';
+export { default as Header } from './Header';
+export { default as Icon, iconsMap } from './Icon';
+export { default as BottomNav } from './BottomNav';

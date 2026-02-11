@@ -1,6 +1,6 @@
 // Extracted from App.js - ResetView component (original lines 1786-1844)
 import React from 'react';
-import { Icon } from '../common/Icon';
+import Icon from '../common/Icon';
 
 /**
  * Password Reset View Component
@@ -16,7 +16,7 @@ import { Icon } from '../common/Icon';
  * @param {Function} studentAuthResetPassword - Supabase password reset
  * @param {Function} setLoginLoading - Set loading state
  */
-export const ResetView = ({
+export default function ResetView({
   email,
   setEmail,
   loginLoading,
@@ -27,7 +27,8 @@ export const ResetView = ({
   findStudentEmailByUsername,
   studentAuthResetPassword,
   setLoginLoading
-}) => (
+}) {
+  return (
   <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
     <div className="mb-8 text-center">
       <h2 className="text-3xl font-black text-white mb-2">Reset Password</h2>
@@ -112,4 +113,5 @@ export const ResetView = ({
       </div>
     </div>
   </div>
-);
+  );
+}

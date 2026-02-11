@@ -1,6 +1,6 @@
 // Extracted from App.js - Authentication hook (original lines 170-480)
 import { useState, useEffect } from 'react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthResetPassword, studentAuthResetPassword, findStudentEmailByUsername } from '../config/supabase';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, teacherAuthResetPassword, studentAuthResetPassword, findStudentEmailByUsername } from '../config/supabase';
 import { getStoredSelection, getStoredView } from '../utils/storage';
 import { getWeekStartISO } from '../utils/dateUtils';
 
@@ -8,12 +8,13 @@ import { getWeekStartISO } from '../utils/dateUtils';
  * useAuth - Custom hook for managing authentication state and operations
  * Handles session checking, login/signup form state, loading states, and error handling.
  * 
+ * @param {Function} onSessionRestored - Optional callback when session is restored
  * @returns {Object} Auth state and handlers:
  *   - State: loginError, setLoginError, loginNotice, setLoginNotice, loginLoading, setLoginLoading
  *   - Form: email, setEmail, password, setPassword, fullName, setFullName
  *   - Session: loading, setLoading
  */
-export const useAuth = (onSessionRestored) => {
+export const useAuth = (onSessionRestored = () => {}) => {
   // --- AUTH STATE (original lines 175-181) ---
   const [loginError, setLoginError] = useState('');
   const [loginNotice, setLoginNotice] = useState('');

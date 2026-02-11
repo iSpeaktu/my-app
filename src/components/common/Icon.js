@@ -93,8 +93,8 @@ export const iconsMap = {
  * @param {string} className - CSS classes
  * @param {object} style - Inline styles
  */
-export const Icon = ({ name, size = 20, className = '', style = {} }) => {
+export default function Icon({ name, size = 20, className = '', style = {} }) {
   const LucideIcon = typeof name === 'string' ? iconsMap[name] : name;
   if (!LucideIcon) return null;
   return <LucideIcon size={size} className={className} style={style} />;
-};
+}

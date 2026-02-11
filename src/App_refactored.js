@@ -10,8 +10,6 @@ import { UserProvider, useUserContext } from './context';
 import { useAuth, useStudentAuth, useTeacherAuth, usePersistentAuth } from './hooks';
 // Original App.js lines 187-430: Student data loading and sync
 import { useStudentData } from './hooks';
-// Original App.js lines 2106-2184: Lesson content and quiz data
-import { useLessonContent } from './hooks';
 // Original App.js lines 207-255: localStorage persistence helpers
 import { useLocalStorage, getStoredView, setStoredView, getStoredSelection, setStoredSelection } from './hooks';
 // Original App.js lines 523-620: Weekly streak and activity tracking

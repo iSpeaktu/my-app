@@ -1,4 +1,4 @@
 // Barrel export for Auth views
-export { LoginView } from './LoginView';
-export { SignupView } from './SignupView';
-export { ResetView } from './ResetView';
+export { default as LoginView } from './LoginView';
+export { default as SignupView } from './SignupView';
+export { default as ResetView } from './ResetView';

@@ -1,28 +1,15 @@
 // Extracted from App.js - Invite token hook (original lines 1177-1240)
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { getStudentProgress, getTeacherNameByUserId, supabase } from '../config/supabase';
+import { useAuthContext } from '../context/AuthContext';
 
 /**
  * useInviteToken - Custom hook for managing teacher invite tokens
  * Handles URL-based invite tokens, localStorage persistence, and teacher assignment checks.
- * 
- * @param {string} inviteToken - Current invite token state
- * @param {Function} setInviteToken - Setter for invite token
- * @param {Function} setInviteConfirmed - Setter for invite confirmation flag
- * @param {Function} setInviteTeacherName - Setter for teacher name display
- * @param {Function} setHasAssignedTeacher - Setter for teacher assignment status
- * @param {Function} redeemTeacherInvite - Supabase function to redeem invite
- * @param {Function} assignStudentToTeacher - Supabase function to assign student to teacher
+ * Gets state setters from AuthContext internally.
  */
-export const useInviteToken = (
-  inviteToken,
-  setInviteToken,
-  setInviteConfirmed,
-  setInviteTeacherName,
-  setHasAssignedTeacher,
-  redeemTeacherInvite,
-  assignStudentToTeacher
-) => {
+export const useInviteToken = () => {
+  const auth = useAuthContext();
   const INVITE_TOKEN_KEY = 'ispeaktu_invite_token';
 
   // --- GET INVITE TOKEN FROM URL (original lines 1177-1183) ---
@@ -35,10 +22,10 @@ export const useInviteToken = (
   };
 
   // --- STORED INVITE TOKEN HELPERS (original lines 1185-1195) ---
-  const getStoredInviteToken = () => inviteToken || localStorage.getItem(INVITE_TOKEN_KEY) || null;
+  const getStoredInviteToken = () => auth.inviteToken || localStorage.getItem(INVITE_TOKEN_KEY) || null;
   
   const setStoredInviteToken = (token) => {
-    setInviteToken(token);
+    auth.setInviteToken(token);
     if (token) {
       localStorage.setItem(INVITE_TOKEN_KEY, token);
     } else {
@@ -76,7 +63,7 @@ export const useInviteToken = (
       clearInviteToken();
     }
 
-    setInviteTeacherName('');
+    auth.setInviteTeacherName('');
     let active = true;
 
     (async () => {
@@ -86,7 +73,7 @@ export const useInviteToken = (
       if (userId) {
         const studentRow = await getStudentProgress(userId);
         if (!studentRow) {
-          setHasAssignedTeacher(null);
+          auth.setHasAssignedTeacher(null);
           return;
         }
 
@@ -94,24 +81,24 @@ export const useInviteToken = (
         if (studentRow?.teacher_id) {
           clearInviteToken();
           clearStoredInviteToken();
-          setInviteConfirmed(false);
-          setInviteTeacherName('');
-          setHasAssignedTeacher(true);
+          auth.setInviteConfirmed(false);
+          auth.setInviteTeacherName('');
+          auth.setHasAssignedTeacher(true);
           return;
         }
 
-        setHasAssignedTeacher(false);
+        auth.setHasAssignedTeacher(false);
       } else {
-        setHasAssignedTeacher(false);
+        auth.setHasAssignedTeacher(false);
       }
 
       if (!active) return;
-      setInviteToken(token);
-      setInviteConfirmed(false);
+      auth.setInviteToken(token);
+      auth.setInviteConfirmed(false);
     })();
 
     return () => { active = false; };
-  }, []);
+  }, [auth]);
 
   return {
     getInviteToken,

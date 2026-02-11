@@ -10,13 +10,14 @@ import React from 'react';
  * @param {object} onboardingData - Current onboarding data
  * @param {object} streakState - Current streak state
  */
-export const ObScreen1 = ({
+export default function ObScreen1({
   setView,
   persistData,
   userName,
   onboardingData,
   streakState
-}) => (
+}) {
+  return (
   <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in">
     <h2 className="text-2xl font-bold mb-10 text-center leading-snug">
       Do you study English with
@@ -41,4 +42,5 @@ export const ObScreen1 = ({
       No, I'm self-studying
     </button>
   </div>
-);
+  );
+}

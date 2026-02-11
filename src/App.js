@@ -25,7 +25,6 @@ import {
   usePersistentAuth 
 } from './hooks/useAuth';
 import { useStudentData } from './hooks/useStudentData';
-import { useLessonContent } from './hooks/useLessonContent';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useStreak } from './hooks/useStreak';
 import { useNotifications } from './hooks/useNotifications';
@@ -41,7 +40,7 @@ import { MATERIALS_DATA } from './constants';
 function AppContent() {
   const auth = useAuthContext();
   const user = useUserContext();
-  const { getStoredInviteToken, clearStoredInviteToken, setInviteConfirmedValue, clearInviteToken } = useInviteToken();
+  const { getStoredInviteToken, clearStoredInviteToken, clearInviteToken } = useInviteToken();
 
   // Confirm teacher invitation
   const confirmInvite = async () => {
@@ -53,7 +52,7 @@ function AppContent() {
   const cancelInvite = () => {
     clearInviteToken();
     clearStoredInviteToken();
-    setInviteConfirmedValue(false);
+    auth.setInviteConfirmed(false);
     auth.setInviteTeacherName('');
   };
 
@@ -91,6 +90,8 @@ function AppContent() {
 
       {!auth.loading && auth.view === 'login' && <LoginView />}
       {!auth.loading && auth.view === 'signup' && <SignupView />}
+      {!auth.loading && auth.view === 'tutor_login' && <LoginView />}
+      {!auth.loading && auth.view === 'tutor_signup' && <SignupView />}
       {!auth.loading && auth.view === 'reset' && <ResetView />}
       {!auth.loading && auth.view === 'ob_screen1' && <ObScreen1 />}
       {!auth.loading && auth.view === 'ob_screen2' && <ObScreen2 />}

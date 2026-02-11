@@ -22,7 +22,7 @@ import { supabase, deleteNotification, getNotifications } from '../../config/sup
  * @param {Object} quizState - Quiz state (currentQuestionIndex, isAnswered, selectedOption, score, history)
  * @param {Function} setQuizState - State setter for quiz state
  */
-export const StudentDashboard = ({
+export default function StudentDashboard({
   displayName,
   userName,
   streakState,
@@ -35,7 +35,7 @@ export const StudentDashboard = ({
   setView,
   quizState,
   setQuizState,
-}) => {
+}) {
   const reminder = studentNotifications.find(n => n.type === 'reminder') || null;
   const praise = studentNotifications.find(n => n.type === 'praise') || null;
   
@@ -148,4 +148,4 @@ export const StudentDashboard = ({
       </div>
     </div>
   );
-};
+}

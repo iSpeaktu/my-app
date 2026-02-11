@@ -1,6 +1,6 @@
 // Extracted from App.js - ObScreen2 component (original lines 1856-1866)
 import React from 'react';
-import { Icon } from '../common/Icon';
+import Icon from '../common/Icon';
 import { MATERIALS_DATA } from '../../constants/materials';
 
 /**
@@ -10,11 +10,12 @@ import { MATERIALS_DATA } from '../../constants/materials';
  * @param {Function} setOnboardingData - Setter for onboarding data
  * @param {Function} setView - View switcher function
  */
-export const ObScreen2 = ({
+export default function ObScreen2({
   onboardingData,
   setOnboardingData,
   setView
-}) => (
+}) {
+  return (
   <div className="max-w-md mx-auto py-10 px-8 animate-in slide-in-from-right-10">
     <h2 className="text-2xl font-bold mb-10 text-center">What do you study?</h2>
     {MATERIALS_DATA.map(m => (
@@ -34,4 +35,5 @@ export const ObScreen2 = ({
       </button>
     ))}
   </div>
-);
+  );
+}

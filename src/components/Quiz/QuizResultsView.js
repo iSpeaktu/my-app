@@ -11,7 +11,7 @@ import { Trophy, AlertTriangle } from 'lucide-react';
  * @param {Array} quizState.history - Array of quiz items with { selected, correct, options[], question, feedback }
  * @param {Function} setView - State setter to navigate back to dashboard
  */
-export const QuizResultsView = ({ quizState, setView }) => {
+export default function QuizResultsView({ quizState, setView }) {
   const percentage = Math.round((quizState.score / quizState.history.length) * 100);
   const passed = percentage >= 70;
   const missed = quizState.history.filter(h => h.selected !== h.correct);

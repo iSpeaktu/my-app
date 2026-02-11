@@ -11,14 +11,15 @@ import React from 'react';
  * @param {string} userName - Current username
  * @param {object} streakState - Current streak state
  */
-export const ObScreen3 = ({
+export default function ObScreen3({
   onboardingData,
   setOnboardingData,
   setView,
   persistData,
   userName,
   streakState
-}) => (
+}) {
+  return (
   <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-right-10">
     <h2 className="text-2xl font-bold mb-10 text-center">What's your level?</h2>
     {onboardingData.material?.levels.map(l => (
@@ -37,4 +38,5 @@ export const ObScreen3 = ({
       </button>
     ))}
   </div>
-);
+  );
+}

@@ -1,7 +1,7 @@
 // Extracted from App.js - Header component (original lines 645-685)
 import React from 'react';
 import { ChevronLeft, User, Star, Flame } from 'lucide-react';
-import { Icon } from './Icon';
+import Icon from './Icon';
 
 /**
  * Header component for displaying page title, avatar, XP, and streak
@@ -14,7 +14,7 @@ import { Icon } from './Icon';
  * @param {string} avatarUrl - Avatar image URL
  * @param {Function} onLogout - Logout button handler
  */
-export const Header = ({
+export default function Header({
   title,
   subtitle,
   showBack = false,
@@ -23,7 +23,7 @@ export const Header = ({
   streakState,
   avatarUrl,
   onLogout
-}) => {
+}) {
   const totalXP = streakState.completedHistory.filter(h => h.passed).length * 10; // XP Rule: +10 per lesson
   
   return (
@@ -71,4 +71,4 @@ export const Header = ({
       </div>
     </div>
   );
-};
+}

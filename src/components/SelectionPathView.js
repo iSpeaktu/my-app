@@ -1,6 +1,8 @@
 // Extracted from App.js - SelectionPath component (original lines 1122-1137)
 import React from 'react';
-import { Header, Card, Icon } from './common';
+import Header from './common/Header';
+import Card from './common/Card';
+import Icon from './common/Icon';
 
 /**
  * SelectionPathView - Level selection interface
@@ -12,7 +14,8 @@ import { Header, Card, Icon } from './common';
  * @param {Function} setSelection - State setter for selection
  * @param {Function} setView - State setter for current view
  */
-export const SelectionPathView = ({ selection, setSelection, setView }) => (
+export default function SelectionPathView({ selection, setSelection, setView }) {
+  return (
   <div className="max-w-md mx-auto py-8 px-6 min-h-screen">
     <Header title="Choose Level" subtitle={selection.material?.title} showBack onBack={() => setView('dashboard')} />
     <div className="space-y-4">
@@ -26,4 +29,5 @@ export const SelectionPathView = ({ selection, setSelection, setView }) => (
       ))}
     </div>
   </div>
-);
+  );
+}

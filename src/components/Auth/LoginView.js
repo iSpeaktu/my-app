@@ -1,67 +1,25 @@
 // Extracted from App.js - LoginView component (original lines 1373-1556)
 import React from 'react';
-import { Icon } from '../common/Icon';
+import Icon from '../common/Icon';
+import { useAuthContext } from '../../context/AuthContext';
+import { useUserContext } from '../../context/UserContext';
+import { useInviteToken } from '../../hooks/useInviteToken';
+import { useStudentData } from '../../hooks/useStudentData';
+import { studentAuthSignIn, teacherAuthSignIn, findStudentEmailByUsername, redeemTeacherInvite, assignStudentToTeacher, supabase } from '../../config/supabase';
+import { isValidEmail } from '../../utils/validation';
 
 /**
  * Student Login View Component
  * Allows students to sign in with email/username and password
- * @param {string} email - Email input value
- * @param {Function} setEmail - Email setter
- * @param {string} password - Password input value
- * @param {Function} setPassword - Password setter
- * @param {boolean} loginLoading - Loading state
- * @param {string} loginError - Error message
- * @param {string} loginNotice - Notice message
- * @param {string} inviteTeacherName - Teacher name if invited
- * @param {Function} setView - View switcher (to change current view)
- * @param {Function} setLoginError - Set login error
- * @param {string} userName - Current username (for display)
- * @param {string} displayName - Current display name (for display)
- * @param {object} isValidEmail - Email validation function
- * @param {Function} findStudentEmailByUsername - Function to resolve username to email
- * @param {Function} studentAuthSignIn - Supabase auth sign in
- * @param {Function} loadStudentData - Load student data after login
- * @param {Function} getInviteToken - Get invite token from URL
- * @param {Function} getStoredInviteToken - Get stored invite token
- * @param {Function} getInviteConfirmed - Check if invite confirmed
- * @param {Function} redeemTeacherInvite - Redeem invite token
- * @param {Function} assignStudentToTeacher - Assign to teacher
- * @param {Function} clearInviteToken - Clear invite token from URL
- * @param {Function} clearStoredInviteToken - Clear stored invite token
- * @param {Function} setInviteConfirmedValue - Set invite confirmed
- * @param {Function} setInviteTeacherName - Set teacher name
- * @param {Function} supabase - Supabase client
- * @param {Function} setLoginLoading - Set loading state
+ * Gets all state from AuthContext and UserContext
  */
-export const LoginView = ({
-  email,
-  setEmail,
-  password,
-  setPassword,
-  loginLoading,
-  loginError,
-  loginNotice,
-  inviteTeacherName,
-  setView,
-  setLoginError,
-  userName,
-  displayName,
-  isValidEmail,
-  findStudentEmailByUsername,
-  studentAuthSignIn,
-  loadStudentData,
-  getInviteToken,
-  getStoredInviteToken,
-  getInviteConfirmed,
-  redeemTeacherInvite,
-  assignStudentToTeacher,
-  clearInviteToken,
-  clearStoredInviteToken,
-  setInviteConfirmedValue,
-  setInviteTeacherName,
-  supabase,
-  setLoginLoading
-}) => (
+export default function LoginView() {
+  const auth = useAuthContext();
+  const user = useUserContext();
+  const { email, setEmail, password, setPassword, loginLoading, loginError, loginNotice, inviteTeacherName, setView, setLoginError, setLoginLoading } = auth;
+  const { getInviteToken, getStoredInviteToken, clearInviteToken, clearStoredInviteToken } = useInviteToken();
+  const { loadStudentData } = useStudentData();
+  return (
   <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in duration-700">
     <div className="mb-12 text-center">
       <h1 className="text-6xl font-extrabold tracking-tighter text-white mb-2" style={{ fontFamily: "'Open Sans', sans-serif" }}>
@@ -152,23 +110,37 @@ export const LoginView = ({
                 loginEmail = resolved.toLowerCase();
               }
 
-              const user = await studentAuthSignIn(loginEmail, password);
-              if (user?.user_metadata?.role === 'teacher') {
+              // Handle tutor login
+              if (auth.view === 'tutor_login') {
+                const teacherUser = await teacherAuthSignIn(loginEmail, password);
+                if (teacherUser?.user_metadata?.role !== 'teacher') {
+                  await supabase.auth.signOut();
+                  setLoginError('This account is not a teacher account');
+                  setLoginLoading(false);
+                  return;
+                }
+                setView('tutor_dashboard');
+                return;
+              }
+
+              // Handle student login
+              const authUser = await studentAuthSignIn(loginEmail, password);
+              if (authUser?.user_metadata?.role === 'teacher') {
                 await supabase.auth.signOut();
                 setLoginError('Teacher accounts must sign in under "I am a Tutor"');
                 setLoginLoading(false);
                 return;
               }
               const inviteToken = getInviteToken() || getStoredInviteToken();
-              if (inviteToken && getInviteConfirmed()) {
+              if (inviteToken && auth.inviteConfirmed) {
                 try {
                   const teacherUserId = await redeemTeacherInvite(inviteToken);
                   if (teacherUserId) {
                     await assignStudentToTeacher(user.id, teacherUserId, inviteToken);
                     clearInviteToken();
                     clearStoredInviteToken();
-                    setInviteConfirmedValue(false);
-                    setInviteTeacherName('');
+                    auth.setInviteConfirmed(false);
+                    auth.setInviteTeacherName('');
                   }
                 } catch (e) {
                   console.error('Invite assign failed:', e);
@@ -228,4 +200,5 @@ export const LoginView = ({
       </div>
     </div>
   </div>
-);
+  );
+}

@@ -1,75 +1,25 @@
 // Extracted from App.js - SignupView component (original lines 1668-1784)
 import React from 'react';
-import { Icon } from '../common/Icon';
+import Icon from '../common/Icon';
+import { useAuthContext } from '../../context/AuthContext';
+import { useUserContext } from '../../context/UserContext';
+import { useInviteToken } from '../../hooks/useInviteToken';
+import { useStudentData } from '../../hooks/useStudentData';
+import { studentAuthSignUp, teacherAuthSignUp, redeemTeacherInvite, assignStudentToTeacher, supabase } from '../../config/supabase';
+import { isValidEmail } from '../../utils/validation';
 
 /**
  * Student Signup View Component
  * Allows students to create new accounts with email and password
- * @param {string} email - Email input value
- * @param {Function} setEmail - Email setter
- * @param {string} password - Password input value
- * @param {Function} setPassword - Password setter
- * @param {string} fullName - Full name input value
- * @param {Function} setFullName - Full name setter
- * @param {boolean} loginLoading - Loading state
- * @param {string} loginError - Error message
- * @param {string} loginNotice - Notice message
- * @param {Function} setView - View switcher
- * @param {Function} setLoginError - Set login error
- * @param {Function} setLoginNotice - Set login notice
- * @param {Function} isValidEmail - Email validation function
- * @param {Function} studentAuthSignUp - Supabase auth signup
- * @param {Function} getInviteToken - Get invite token from URL
- * @param {Function} getStoredInviteToken - Get stored invite token
- * @param {Function} getInviteConfirmed - Check if invite confirmed
- * @param {Function} redeemTeacherInvite - Redeem invite token
- * @param {Function} assignStudentToTeacher - Assign to teacher
- * @param {Function} clearInviteToken - Clear invite token from URL
- * @param {Function} clearStoredInviteToken - Clear stored invite token
- * @param {Function} setInviteConfirmedValue - Set invite confirmed
- * @param {Function} setInviteTeacherName - Set teacher name
- * @param {Function} setUserName - Set username
- * @param {Function} setDisplayName - Set display name
- * @param {Function} setOnboardingData - Set onboarding data
- * @param {Function} persistData - Persist data to database
- * @param {object} onboardingData - Onboarding data
- * @param {object} streakState - Streak state
- * @param {Function} supabase - Supabase client
- * @param {Function} setLoginLoading - Set loading state
+ * Gets all state from AuthContext and UserContext
  */
-export const SignupView = ({
-  email,
-  setEmail,
-  password,
-  setPassword,
-  fullName,
-  setFullName,
-  loginLoading,
-  loginError,
-  loginNotice,
-  setView,
-  setLoginError,
-  setLoginNotice,
-  isValidEmail,
-  studentAuthSignUp,
-  getInviteToken,
-  getStoredInviteToken,
-  getInviteConfirmed,
-  redeemTeacherInvite,
-  assignStudentToTeacher,
-  clearInviteToken,
-  clearStoredInviteToken,
-  setInviteConfirmedValue,
-  setInviteTeacherName,
-  setUserName,
-  setDisplayName,
-  setOnboardingData,
-  persistData,
-  onboardingData,
-  streakState,
-  supabase,
-  setLoginLoading
-}) => (
+export default function SignupView() {
+  const auth = useAuthContext();
+  const user = useUserContext();
+  const { email, setEmail, password, setPassword, fullName, setFullName, loginLoading, loginError, loginNotice, setView, setLoginError, setLoginNotice, setLoginLoading } = auth;
+  const { getInviteToken, getStoredInviteToken, clearInviteToken, clearStoredInviteToken } = useInviteToken();
+  const { loadStudentData } = useStudentData();
+  return (
   <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
     <div className="mb-8 text-center">
       <h2 className="text-3xl font-black text-white mb-2">Create an Account</h2>
@@ -157,7 +107,31 @@ export const SignupView = ({
               setLoginLoading(true);
               setLoginError('');
               setLoginNotice('');
-              const user = await studentAuthSignUp(email.toLowerCase(), password, fullName);
+              
+              // Handle tutor signup
+              if (auth.view === 'tutor_signup') {
+                const teacherUser = await teacherAuthSignUp(email.toLowerCase(), password, fullName);
+                const { data: sessionData } = await supabase.auth.getSession();
+                if (!sessionData?.session) {
+                  setLoginNotice('Check your email to confirm your account before signing in.');
+                  setLoginLoading(false);
+                  return;
+                }
+                if (teacherUser?.user_metadata?.role !== 'teacher') {
+                  await supabase.auth.signOut();
+                  setLoginError('Failed to create teacher account');
+                  setLoginLoading(false);
+                  return;
+                }
+                const normalized = (teacherUser?.user_metadata?.username || (teacherUser?.email || '').split('@')[0] || email).toLowerCase();
+                auth.setUserName(normalized);
+                auth.setDisplayName(fullName || normalized);
+                setView('tutor_dashboard');
+                return;
+              }
+              
+              // Handle student signup
+              const authUser = await studentAuthSignUp(email.toLowerCase(), password, fullName);
               const { data: sessionData } = await supabase.auth.getSession();
               if (!sessionData?.session) {
                 setLoginNotice('Check your email to confirm your account before signing in.');
@@ -165,28 +139,27 @@ export const SignupView = ({
                 return;
               }
               const inviteToken = getInviteToken() || getStoredInviteToken();
-              if (inviteToken && getInviteConfirmed()) {
+              if (inviteToken && auth.inviteConfirmed) {
                 try {
                   const teacherUserId = await redeemTeacherInvite(inviteToken);
                   if (teacherUserId) {
-                    await assignStudentToTeacher(user.id, teacherUserId, inviteToken);
+                    await assignStudentToTeacher(authUser.id, teacherUserId, inviteToken);
                     clearInviteToken();
                     clearStoredInviteToken();
-                    setInviteConfirmedValue(false);
-                    setInviteTeacherName('');
+                    auth.setInviteConfirmed(false);
+                    auth.setInviteTeacherName('');
                   }
                 } catch (e) {
                   console.error('Invite assign failed:', e);
                 }
               }
 
-              const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
-              setUserName(normalized);
-              setDisplayName(fullName || normalized);
+              const normalized = (authUser?.user_metadata?.username || (authUser?.email || '').split('@')[0] || email).toLowerCase();
+              auth.setUserName(normalized);
+              auth.setDisplayName(fullName || normalized);
 
-              const baseOnboarding = { material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek };
-              setOnboardingData(baseOnboarding);
-              await persistData({ userName: normalized, displayName: fullName, onboardingData: baseOnboarding, streakState, xp: 0 });
+              const baseOnboarding = { material: null, level: null, lessonsPerWeek: user.onboardingData?.lessonsPerWeek || 3 };
+              user.setOnboardingData(baseOnboarding);
               setView('ob_screen1');
             } catch (err) {
               const msg = (err?.message || '').toLowerCase();
@@ -220,4 +193,5 @@ export const SignupView = ({
       </div>
     </div>
   </div>
-);
+  );
+}

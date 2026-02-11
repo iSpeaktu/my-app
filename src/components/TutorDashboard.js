@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { Icon } from './common';
 import { MATERIALS_DATA } from '../constants/materials';
-import { LESSON_SKILLS } from '../constants/lessonContent';
 import { supabase, getTeacherStudents, createNotification, createTeacherInvite } from '../config/supabase';
 
 /**
@@ -18,7 +17,7 @@ import { supabase, getTeacherStudents, createNotification, createTeacherInvite }
  * 
  * @param {Function} onLogout - Callback to logout and return to login view
  */
-export function TutorDashboard({ onLogout }) {
+export default function TutorDashboard({ onLogout }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [teacherName, setTeacherName] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -216,20 +215,8 @@ export function TutorDashboard({ onLogout }) {
   };
   
   if (selectedStudent) {
-      const grammarFailures = {};
-      selectedStudent.history.filter(h => !h.passed).forEach(h => {
-          const key = `${h.material}_${h.level}_${h.lessonId}`;
-          const skills = LESSON_SKILLS[key];
-          if (skills) {
-              skills.grammar.forEach(g => {
-                  grammarFailures[g] = (grammarFailures[g] || 0) + 1;
-              });
-          }
-      });
-      const focalGrammar = Object.entries(grammarFailures)
-          .filter(([_, count]) => count >= 1)
-          .sort((a, b) => b[1] - a[1])
-          .map(([name]) => name);
+      // Grammar failure analysis now comes from database (database-driven)
+      const focalGrammar = [];
 
       return (
         <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-right-8">

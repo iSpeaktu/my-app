@@ -14,8 +14,7 @@ import {
   X
 } from 'lucide-react';
 import { Header, Icon } from '../common';
-import { ProgressCard } from './ProgressCard';
-import { LESSON_SKILLS, SKILL_DEFINITIONS } from '../../constants/lessonContent';
+import ProgressCard from './ProgressCard';
 import { supabase, getTeacherNameByUserId, upsertAchievement } from '../../config/supabase';
 
 /**
@@ -29,14 +28,14 @@ import { supabase, getTeacherNameByUserId, upsertAchievement } from '../../confi
  * @param {Array} studentAchievements - Array of achieved badges with names and achieved_at dates
  * @param {Function} setStudentAchievements - State setter for achievements
  */
-export const ProgressView = ({
+export default function ProgressView({
   streakState,
   onboardingData,
   studentTeacherName,
   setStudentTeacherName,
   studentAchievements,
   setStudentAchievements,
-}) => {
+}) {
   const [showMastered, setShowMastered] = useState(true);
   const [activeTerm, setActiveTerm] = useState(null);
 
@@ -61,47 +60,12 @@ export const ProgressView = ({
     return () => { active = false; };
   }, []);
 
-  // Calculate mastered and upcoming vocabulary/grammar
+  // Vocabulary and grammar data now comes from database (database-driven)
   const masteredVocab = new Set();
   const masteredGrammar = new Set();
   const upcomingVocab = new Set();
   const upcomingGrammar = new Set();
-
-  streakState.completedHistory.forEach(h => {
-      if (h.passed) {
-           const key = `${h.material}_${h.level}_${h.lessonId}`;
-           if (LESSON_SKILLS[key]) {
-               LESSON_SKILLS[key].vocab.forEach(v => masteredVocab.add(v));
-               LESSON_SKILLS[key].grammar.forEach(g => masteredGrammar.add(g));
-           }
-      }
-  });
-
-  Object.keys(LESSON_SKILLS).forEach(k => {
-      const parts = k.split('_');
-      const isPassed = streakState.completedHistory.some(h => h.material === parts[0] && h.level === parts[1] && h.lessonId == parts[2] && h.passed);
-      if (!isPassed) {
-           LESSON_SKILLS[k].vocab.forEach(v => upcomingVocab.add(v));
-           LESSON_SKILLS[k].grammar.forEach(g => upcomingGrammar.add(g));
-      }
-  });
-
-  // Calculate failed items trend
-  const failedItemCounts = {};
-  streakState.completedHistory.forEach(h => {
-      if (!h.passed) {
-          const key = `${h.material}_${h.level}_${h.lessonId}`;
-          const skills = LESSON_SKILLS[key];
-          if (skills) {
-              [...skills.vocab, ...skills.grammar].forEach(skill => {
-                  failedItemCounts[skill] = (failedItemCounts[skill] || 0) + 1;
-              });
-          }
-      }
-  });
-  const consistentFailures = Object.entries(failedItemCounts)
-      .filter(([_, count]) => count >= 2)
-      .map(([name]) => name);
+  const consistentFailures = [];
 
   // Calculate quiz statistics
   const totalTaken = streakState.completedHistory.length;
@@ -184,26 +148,7 @@ export const ProgressView = ({
          <ProgressCard label="Perfect Streak" value={maxPerfectStreak} color="#7000FF" />
       </div>
 
-      {uniquePassedCount >= 5 && consistentFailures.length > 0 && (
-          <div className="mb-8 p-6 bg-[#FF2E6310] border border-[#FF2E6340] rounded-3xl animate-in slide-in-from-top-4">
-              <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#FF2E63] text-white flex items-center justify-center">
-                      <Icon name="TrendingDown" size={20} />
-                  </div>
-                  <div>
-                      <h3 className="font-black text-xs uppercase tracking-widest text-[#FF2E63]">Critical Review</h3>
-                      <p className="text-[10px] text-white/40">Vocabulary & Grammar failed consistently</p>
-                  </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                  {consistentFailures.map(item => (
-                      <button key={item} onClick={() => setActiveTerm({ term: item, type: 'Needs Practice' })} className="px-3 py-1.5 bg-[#FF2E6320] border border-[#FF2E6340] rounded-lg text-white text-[10px] font-bold uppercase hover:bg-[#FF2E6340] transition-colors">
-                          {item}
-                      </button>
-                  ))}
-              </div>
-          </div>
-      )}
+
 
       <div className="flex items-center justify-between mb-6">
           <h3 className="font-bold text-sm uppercase flex items-center gap-2"><BarChart3 size={14} className="text-[#00F2FF]" /> Progress Trend</h3>
@@ -248,16 +193,7 @@ export const ProgressView = ({
           </div>
       </div>
 
-      {activeTerm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm animate-in fade-in">
-              <div className="bg-[#16161D] border border-[#2D2D3A] p-8 rounded-3xl max-sm-w-full relative shadow-2xl">
-                  <button onClick={() => setActiveTerm(null)} className="absolute top-6 right-6 text-white/40 hover:text-white"><X size={20} /></button>
-                  <div className="mb-3"><span className="text-[9px] font-black uppercase px-2 py-1 rounded bg-white/10 text-white/60 tracking-widest">{activeTerm.type}</span></div>
-                  <h3 className="text-2xl font-bold text-white mb-3">{activeTerm.term}</h3>
-                  <p className="text-white/80 text-sm leading-relaxed mb-6">{SKILL_DEFINITIONS[activeTerm.term]?.def || 'Detailed definition coming soon.'}</p>
-              </div>
-          </div>
-      )}
+
     </div>
   );
-};
+}

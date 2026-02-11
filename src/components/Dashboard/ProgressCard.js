@@ -9,11 +9,13 @@ import React from 'react';
  * @param {number|string} value - The metric value to display
  * @param {string} color - Hex color for the label text (e.g., "#00F2FF", "#7000FF")
  */
-export const ProgressCard = ({ label, value, color = '#00F2FF' }) => (
-  <div className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl">
-    <div className="text-[10px] font-black uppercase mb-1 tracking-widest" style={{ color }}>
-      {label}
+export default function ProgressCard({ label, value, color = '#00F2FF' }) {
+  return (
+    <div className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl">
+      <div className="text-[10px] font-black uppercase mb-1 tracking-widest" style={{ color }}>
+        {label}
+      </div>
+      <div className="text-3xl font-black text-white">{value}</div>
     </div>
-    <div className="text-3xl font-black text-white">{value}</div>
-  </div>
-);
+  );
+}
