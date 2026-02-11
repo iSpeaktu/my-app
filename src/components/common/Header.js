@@ -1,5 +1,6 @@
 // Extracted from App.js - Header component (original lines 645-685)
 import React from 'react';
+import { useUserContext } from '../../context/UserContext';
 import { ChevronLeft, User, Star, Flame } from 'lucide-react';
 import Icon from './Icon';
 
@@ -24,7 +25,10 @@ export default function Header({
   avatarUrl,
   onLogout
 }) {
-  const totalXP = streakState.completedHistory.filter(h => h.passed).length * 10; // XP Rule: +10 per lesson
+  const user = useUserContext();
+  const streakStateSafe = streakState || user?.streakState || { completedHistory: [], weeklyStreak: 0 };
+  const completed = Array.isArray(streakStateSafe.completedHistory) ? streakStateSafe.completedHistory : [];
+  const totalXP = (completed.filter(h => h.passed).length) * 10; // XP Rule: +10 per lesson
   
   return (
     <div className="flex items-center justify-between mb-8 px-2">
@@ -59,7 +63,7 @@ export default function Header({
         {showStreak && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFD70015] rounded-full border border-[#FFD70030]">
             <Flame size={14} className="text-[#FFD700]" fill="currentColor" />
-            <span className="text-[#FFD700] font-bold text-xs">{streakState.weeklyStreak}</span>
+            <span className="text-[#FFD700] font-bold text-xs">{streakStateSafe.weeklyStreak}</span>
           </div>
         )}
         <button

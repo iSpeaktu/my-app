@@ -1,6 +1,10 @@
 // Extracted from App.js - ResetView component (original lines 1786-1844)
 import React from 'react';
 import Icon from '../common/Icon';
+import { useAuthContext } from '../../context/AuthContext';
+import { useUserContext } from '../../context/UserContext';
+import { findStudentEmailByUsername, studentAuthResetPassword } from '../../config/supabase';
+import { isValidEmail } from '../../utils/validation';
 
 /**
  * Password Reset View Component
@@ -16,18 +20,17 @@ import Icon from '../common/Icon';
  * @param {Function} studentAuthResetPassword - Supabase password reset
  * @param {Function} setLoginLoading - Set loading state
  */
-export default function ResetView({
-  email,
-  setEmail,
-  loginLoading,
-  loginError,
-  setView,
-  setLoginError,
-  isValidEmail,
-  findStudentEmailByUsername,
-  studentAuthResetPassword,
-  setLoginLoading
-}) {
+export default function ResetView() {
+  const auth = useAuthContext();
+  const user = useUserContext();
+
+  const email = auth.email;
+  const setEmail = auth.setEmail;
+  const loginLoading = auth.loginLoading;
+  const loginError = auth.loginError;
+  const setView = auth.setView;
+  const setLoginError = auth.setLoginError;
+  const setLoginLoading = auth.setLoginLoading;
   return (
   <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
     <div className="mb-8 text-center">

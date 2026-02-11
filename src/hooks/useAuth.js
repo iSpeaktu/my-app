@@ -23,29 +23,52 @@ export const useAuth = (onSessionRestored = () => {}) => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(null);
+  const [userRole, setUserRole] = useState(null);
 
   // --- SESSION CHECK ON MOUNT (original lines 430-480) ---
   useEffect(() => {
-    let active = true;
-    (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const sessionUser = sessionData?.session?.user;
+    let mounted = true;
 
-      if (!sessionUser) {
-        if (active) setLoading(false);
-        return;
+    const init = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const currentSession = sessionData?.session || null;
+        const sessionUser = currentSession?.user || null;
+        if (!mounted) return;
+        setSession(currentSession);
+        const role = sessionUser?.user_metadata?.role || null;
+        setUserRole(role);
+        if (sessionUser) {
+          onSessionRestored({ sessionUser, role, setLoading });
+        }
+      } catch (err) {
+        console.error('Failed to initialize auth session:', err);
+      } finally {
+        if (mounted) setLoading(false);
       }
+    };
 
-      const role = sessionUser.user_metadata?.role;
-      if (active) {
-        onSessionRestored({
-          sessionUser,
-          role,
-          setLoading
-        });
+    init();
+
+    const { subscription } = supabase.auth.onAuthStateChange((_event, payload) => {
+      const newSession = payload?.session || null;
+      const newUser = newSession?.user || null;
+      if (!mounted) return;
+      setSession(newSession);
+      setUserRole(newUser?.user_metadata?.role || null);
+      if (!newSession) {
+        // signed out
+        setLoading(false);
       }
-    })();
-    return () => { active = false; };
+    });
+
+    return () => {
+      mounted = false;
+      try {
+        subscription?.unsubscribe?.();
+      } catch (e) {}
+    };
   }, [onSessionRestored]);
 
   return {
@@ -66,6 +89,8 @@ export const useAuth = (onSessionRestored = () => {}) => {
     // Session state
     loading,
     setLoading,
+    session,
+    userRole,
   };
 };
 

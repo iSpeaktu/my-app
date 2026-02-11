@@ -26,6 +26,9 @@ export default function LoginView() {
         iSpeaktu
       </h1>
       <p className="text-[#00F2FF] font-semibold text-sm tracking-wide opacity-90">turn mistakes into progress</p>
+      <p className="text-white/60 text-xs mt-4 font-semibold uppercase tracking-widest">
+        {auth.view === 'tutor_login' ? '👨‍🏫 Tutor Sign In' : '👤 Student Sign In'}
+      </p>
     </div>
 
     <div className="w-full max-w-xs space-y-4">
@@ -77,6 +80,7 @@ export default function LoginView() {
 
       <div className="flex gap-2">
         <button
+          type="button"
           onClick={async () => {
             if (!email) {
               setLoginError('Enter email or username');
@@ -136,7 +140,8 @@ export default function LoginView() {
                 try {
                   const teacherUserId = await redeemTeacherInvite(inviteToken);
                   if (teacherUserId) {
-                    await assignStudentToTeacher(user.id, teacherUserId, inviteToken);
+                    // assign to the signed-in auth user (not the user context object)
+                    await assignStudentToTeacher(authUser.id, teacherUserId, inviteToken);
                     clearInviteToken();
                     clearStoredInviteToken();
                     auth.setInviteConfirmed(false);
@@ -146,7 +151,19 @@ export default function LoginView() {
                   console.error('Invite assign failed:', e);
                 }
               }
-              const { material, level, hasStudent, hasProfile } = await loadStudentData(user);
+              const { material, level, hasStudent, hasProfile } = await loadStudentData(
+                authUser,
+                auth.userName,
+                auth.setUserName,
+                auth.displayName,
+                auth.setDisplayName
+              );
+              // Restore selection into UserContext so UI reflects persisted track/level
+              try {
+                user.setSelection({ material, level, lessonNumber: null });
+              } catch (e) {
+                // non-fatal
+              }
               setView(material && level ? 'dashboard' : (hasStudent || hasProfile ? 'dashboard' : 'ob_screen1'));
             } catch (err) {
               setLoginError(err.message || 'Email login failed');
@@ -162,12 +179,13 @@ export default function LoginView() {
         </button>
 
         <button
+          type="button"
           onClick={() => {
             setLoginError('');
-            setView('signup');
+            setView(auth.view === 'tutor_login' ? 'tutor_signup' : 'signup');
           }}
           disabled={loginLoading}
-          aria-label="Create a new student account"
+          aria-label="Create a new account"
           className="flex-1 bg-[#7000FF] text-white py-3 rounded-xl font-bold text-lg hover:brightness-110 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all disabled:opacity-50"
         >
           Sign up
@@ -176,18 +194,20 @@ export default function LoginView() {
 
       <div className="flex items-center justify-between gap-2 pt-2">
         <button
+          type="button"
           onClick={() => {
-            setView('tutor_login');
+            setView(auth.view === 'tutor_login' ? 'login' : 'tutor_login');
             setLoginError('');
           }}
           disabled={loginLoading}
-          aria-label="Switch to tutor login mode"
-          className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 rounded px-2 py-1"
+          aria-label="Switch login mode"
+          className="w-1/2 pt-2 text-white text-xs font-bold uppercase tracking-widest hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all flex items-center justify-center gap-2 disabled:opacity-50 rounded px-2 py-1 hover:bg-[#7000FF]/30 cursor-pointer active:scale-95"
         >
-          <Icon name="Settings" size={12} />
-          I am a Tutor
+          <Icon name="Settings" size={14} />
+          {auth.view === 'tutor_login' ? 'I am a Student' : 'I am a Tutor'}
         </button>
         <button
+          type="button"
           onClick={() => {
             setView('reset');
             setLoginError('');

@@ -1,5 +1,7 @@
 // Extracted from App.js - ProgressView component (original lines 852-1080)
 import React, { useState, useEffect } from 'react';
+import { useAuthContext } from '../../context/AuthContext';
+import { useUserContext } from '../../context/UserContext';
 import {
   Star,
   Compass,
@@ -29,13 +31,23 @@ import { supabase, getTeacherNameByUserId, upsertAchievement } from '../../confi
  * @param {Function} setStudentAchievements - State setter for achievements
  */
 export default function ProgressView({
-  streakState,
-  onboardingData,
-  studentTeacherName,
-  setStudentTeacherName,
-  studentAchievements,
-  setStudentAchievements,
+  // Backwards compatible props are accepted but prefer context
+  streakState: propsStreakState,
+  onboardingData: propsOnboardingData,
+  studentTeacherName: propsStudentTeacherName,
+  setStudentTeacherName: propsSetStudentTeacherName,
+  studentAchievements: propsStudentAchievements,
+  setStudentAchievements: propsSetStudentAchievements,
 }) {
+  const auth = useAuthContext();
+  const user = useUserContext();
+
+  const streakState = propsStreakState || user.streakState || { completedHistory: [], weeklyActivityCount: 0 };
+  const onboardingData = propsOnboardingData || user.onboardingData || { lessonsPerWeek: 3 };
+  const studentTeacherName = propsStudentTeacherName || user.studentTeacherName || '';
+  const setStudentTeacherName = propsSetStudentTeacherName || user.setStudentTeacherName || (() => {});
+  const studentAchievements = propsStudentAchievements || user.studentAchievements || [];
+  const setStudentAchievements = propsSetStudentAchievements || user.setStudentAchievements || (() => {});
   const [showMastered, setShowMastered] = useState(true);
   const [activeTerm, setActiveTerm] = useState(null);
 

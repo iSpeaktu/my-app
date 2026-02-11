@@ -22,24 +22,43 @@ import { supabase, deleteNotification, getNotifications } from '../../config/sup
  * @param {Object} quizState - Quiz state (currentQuestionIndex, isAnswered, selectedOption, score, history)
  * @param {Function} setQuizState - State setter for quiz state
  */
-export default function StudentDashboard({
-  displayName,
-  userName,
-  streakState,
-  onboardingData,
-  studentNotifications,
-  setStudentNotifications,
-  selection,
-  setSelection,
-  view,
-  setView,
-  quizState,
-  setQuizState,
-}) {
-  const reminder = studentNotifications.find(n => n.type === 'reminder') || null;
-  const praise = studentNotifications.find(n => n.type === 'praise') || null;
-  
-  const weeklyTarget = onboardingData.lessonsPerWeek || 3;
+import { useAuthContext } from '../../context/AuthContext';
+import { useUserContext } from '../../context/UserContext';
+
+export default function StudentDashboard() {
+  const auth = useAuthContext();
+  const user = useUserContext();
+
+  const displayName = auth.displayName || auth.userName;
+  const userName = auth.userName;
+  const streakState = user.streakState;
+  const onboardingData = user.onboardingData;
+  const studentNotifications = user.studentNotifications;
+  const setStudentNotifications = user.setStudentNotifications;
+  const selection = user.selection;
+  const setSelection = user.setSelection;
+  const view = auth.view;
+  const setView = auth.setView;
+  const quizState = user.quizState;
+  const setQuizState = user.setQuizState;
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setView('login');
+      auth.setUserName('');
+      auth.setDisplayName('');
+      auth.setLoginError('');
+      auth.setLoginNotice('');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
+
+  const reminder = (studentNotifications || []).find(n => n.type === 'reminder') || null;
+  const praise = (studentNotifications || []).find(n => n.type === 'praise') || null;
+
+  const weeklyTarget = onboardingData?.lessonsPerWeek || 3;
   const progressPerc = Math.min(100, (streakState.weeklyActivityCount / weeklyTarget) * 100);
 
   const dismissPraise = async (e) => {
@@ -60,7 +79,7 @@ export default function StudentDashboard({
 
   return (
     <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
-      <Header title={`Hello, ${displayName || userName}`} subtitle="Your learning dashboard" showStreak streakState={streakState} />
+      <Header title={`Hello, ${displayName || userName}`} subtitle="Your learning dashboard" showStreak streakState={streakState} onLogout={handleLogout} />
       
       <div className="mb-8">
         <div className="flex justify-between items-end mb-2 text-[10px] font-bold uppercase tracking-widest text-white/60">

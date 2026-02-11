@@ -23,7 +23,10 @@ export default function SignupView() {
   <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-bottom-10">
     <div className="mb-8 text-center">
       <h2 className="text-3xl font-black text-white mb-2">Create an Account</h2>
-      <p className="text-white/50 text-sm">Sign up with your name, email and password</p>
+      <p className="text-white/50 text-sm">{auth.view === 'tutor_signup' ? 'Sign up as a tutor' : 'Sign up with your name, email and password'}</p>
+      <p className="text-white/60 text-xs mt-3 font-semibold uppercase tracking-widest">
+        {auth.view === 'tutor_signup' ? '👨‍🏫 Tutor Registration' : '👤 Student Registration'}
+      </p>
     </div>
     <div className="w-full max-w-xs space-y-4">
       {loginError && (
@@ -180,15 +183,44 @@ export default function SignupView() {
         </button>
 
         <button
+          type="button"
           onClick={() => {
-            setView('login');
+            setView(auth.view === 'tutor_signup' ? 'tutor_login' : 'login');
             setLoginError('');
             setLoginNotice('');
           }}
-          aria-label="Go back to student login"
+          aria-label="Go back to login"
           className="flex-1 bg-[#16161D] text-white py-3 rounded-xl font-bold text-lg border border-[#2D2D3A] focus:outline-none focus:ring-2 focus:ring-[#2D2D3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all"
         >
           Back
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <button
+          type="button"
+          onClick={() => {
+            setView(auth.view === 'tutor_signup' ? 'signup' : 'tutor_signup');
+            setLoginError('');
+            setLoginNotice('');
+          }}
+          disabled={loginLoading}
+          aria-label="Switch signup mode"
+          className="w-1/2 pt-2 text-white text-xs font-bold uppercase tracking-widest hover:text-white/80 focus:outline-none focus:ring-2 focus:ring-[#7000FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all flex items-center justify-center gap-2 disabled:opacity-50 rounded px-2 py-1 hover:bg-[#7000FF]/30 cursor-pointer active:scale-95"
+        >
+          <Icon name="Settings" size={14} />
+          {auth.view === 'tutor_signup' ? 'I am a Student' : 'I am a Tutor'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setView('reset');
+            setLoginError('');
+          }}
+          aria-label="Reset forgotten password"
+          className="w-1/2 pt-2 text-white/20 text-[10px] font-black uppercase tracking-widest hover:text-white focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-colors disabled:opacity-50 rounded px-2 py-1"
+        >
+          Forgot password?
         </button>
       </div>
     </div>

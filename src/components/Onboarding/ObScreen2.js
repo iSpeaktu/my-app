@@ -1,20 +1,19 @@
 // Extracted from App.js - ObScreen2 component (original lines 1856-1866)
 import React from 'react';
 import Icon from '../common/Icon';
+import { useAuthContext } from '../../context/AuthContext';
+import { useUserContext } from '../../context/UserContext';
 import { MATERIALS_DATA } from '../../constants/materials';
 
 /**
  * Onboarding Screen 2 - Material/Track selection
  * Allows user to choose which English track to study (Conversational, Business, etc.)
- * @param {object} onboardingData - Current onboarding data
- * @param {Function} setOnboardingData - Setter for onboarding data
- * @param {Function} setView - View switcher function
  */
-export default function ObScreen2({
-  onboardingData,
-  setOnboardingData,
-  setView
-}) {
+export default function ObScreen2() {
+  const auth = useAuthContext();
+  const user = useUserContext();
+  const { setView } = auth;
+  const { onboardingData, setOnboardingData } = user;
   return (
   <div className="max-w-md mx-auto py-10 px-8 animate-in slide-in-from-right-10">
     <h2 className="text-2xl font-bold mb-10 text-center">What do you study?</h2>

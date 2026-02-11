@@ -14,8 +14,12 @@ import ObScreen3 from './components/Onboarding/ObScreen3';
 import StudentDashboard from './components/Dashboard/StudentDashboard';
 import ProgressView from './components/Dashboard/ProgressView';
 import SelectionPathView from './components/SelectionPathView';
+import SelectLessonView from './components/Selection/SelectLessonView';
 import QuizResultsView from './components/Quiz/QuizResultsView';
 import TutorDashboard from './components/TutorDashboard';
+import SettingsView from './components/Dashboard/SettingsView';
+import { BottomNav } from './components/common';
+import QuizView from './components/Quiz/QuizView';
 
 // === CUSTOM HOOKS ===
 import { 
@@ -29,6 +33,9 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { useStreak } from './hooks/useStreak';
 import { useNotifications } from './hooks/useNotifications';
 import { useInviteToken } from './hooks/useInviteToken';
+
+// === CONFIG ===
+import { supabase } from './config/supabase';
 
 // === CONSTANTS ===
 import { MATERIALS_DATA } from './constants';
@@ -54,6 +61,20 @@ function AppContent() {
     clearStoredInviteToken();
     auth.setInviteConfirmed(false);
     auth.setInviteTeacherName('');
+  };
+
+  // Handle teacher logout
+  const handleTutorLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      auth.setView('login');
+      auth.setUserName('');
+      auth.setDisplayName('');
+      auth.setLoginError('');
+      auth.setLoginNotice('');
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
   };
 
   return (
@@ -99,11 +120,16 @@ function AppContent() {
       {!auth.loading && auth.view === 'dashboard' && <StudentDashboard />}
       {!auth.loading && auth.view === 'progress' && <ProgressView />}
       {!auth.loading && auth.view === 'select_level' && <SelectionPathView />}
-      {!auth.loading && auth.view === 'quiz' && <div className="p-6 text-center text-white/70">Quiz View (to be implemented)</div>}
-      {!auth.loading && auth.view === 'results' && <QuizResultsView />}
-      {!auth.loading && auth.view === 'settings' && <div className="p-6 text-center text-white/70">Settings View (to be implemented)</div>}
-      {!auth.loading && auth.view === 'select_lesson' && <div className="p-6 text-center text-white/70">Select Lesson View (to be implemented)</div>}
-      {!auth.loading && auth.view === 'tutor_dashboard' && <TutorDashboard />}
+      {!auth.loading && auth.view === 'quiz' && <QuizView />}
+      {!auth.loading && auth.view === 'results' && <QuizResultsView quizState={user.quizState} setView={auth.setView} />}
+      {!auth.loading && auth.view === 'settings' && <SettingsView />}
+      {!auth.loading && auth.view === 'select_lesson' && <SelectLessonView />}
+      {!auth.loading && auth.view === 'tutor_dashboard' && <TutorDashboard onLogout={handleTutorLogout} />}
+
+      {/* Bottom navigation for student views */}
+      {!auth.loading && ['dashboard','progress','settings','select_level','select_lesson','quiz','results'].includes(auth.view) && (
+        <BottomNav view={auth.view} setView={auth.setView} />
+      )}
     </div>
   );
 }

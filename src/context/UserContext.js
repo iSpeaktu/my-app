@@ -1,4 +1,7 @@
-import React, { createContext, useState } from 'react';
+import React, { createContext, useState, useEffect } from 'react';
+import { useAuthContext } from './AuthContext';
+import { updateStudentData } from '../config/supabase';
+import { useStudentData } from '../hooks/useStudentData';
 
 // Original App.js lines 188-208: User profile, progress, and settings state
 export const UserContext = createContext();
@@ -33,6 +36,58 @@ export const UserProvider = ({ children }) => {
     level: null, 
     lessonNumber: null 
   });
+
+  const auth = useAuthContext();
+
+  // Attempt to restore onboarding/selection from the database when a session
+  // becomes available. We call the shared loader to read current material/level
+  // and then update the UserContext state so the UI reflects persisted values.
+  const { loadStudentData } = useStudentData();
+  useEffect(() => {
+    let mounted = true;
+    if (auth && auth.session && auth.session.user) {
+      (async () => {
+        try {
+          const { material, level } = await loadStudentData(
+            auth.session.user,
+            auth.userName,
+            auth.setUserName,
+            auth.displayName,
+            auth.setDisplayName
+          );
+          if (!mounted) return;
+          if (material || level) {
+            setOnboardingData(prev => ({ ...prev, material: material || prev.material, level: level || prev.level }));
+            try { setSelectionWrapped({ material, level, lessonNumber: null }); } catch (e) {}
+          }
+        } catch (e) {
+          console.warn('Failed to restore student data on session restore', e);
+        }
+      })();
+    }
+    return () => { mounted = false; };
+  }, [auth?.session?.user]);
+
+  // Wrapped setter that persists selected track/level to Supabase when available
+  const setSelectionWrapped = async (next) => {
+    let resolvedValue = null;
+    setSelection(prev => {
+      resolvedValue = typeof next === 'function' ? next(prev) : next;
+      return resolvedValue;
+    });
+
+    try {
+      const matId = resolvedValue?.material?.id || null;
+      const lvl = resolvedValue?.level || null;
+      const studentName = (auth?.userName || '').toLowerCase();
+      if (studentName) {
+        // Fire-and-forget persistence
+        updateStudentData(studentName, { current_material_id: matId, current_level: lvl }).catch(e => console.warn('Persist selection failed', e));
+      }
+    } catch (e) {
+      console.warn('setSelectionWrapped persistence error', e);
+    }
+  };
   
   // Quiz state tracking (original line 207)
   const [quizState, setQuizState] = useState({ 
@@ -73,7 +128,7 @@ export const UserProvider = ({ children }) => {
     
     // Current selection
     selection,
-    setSelection,
+    setSelection: setSelectionWrapped,
     
     // Quiz state
     quizState,
@@ -83,6 +138,20 @@ export const UserProvider = ({ children }) => {
     settings,
     setSettings,
   };
+
+  // When an auth session is restored (page refresh), reset transient student state
+  // so users are not locked out but volatile UI state is cleared.
+  useEffect(() => {
+    if (auth && auth.session) {
+      // Keep existing selection/onboarding until data loader restores it.
+      // Do NOT overwrite `selection` here to avoid clobbering values
+      // while async restoration from Supabase is still in progress.
+      // Reset quiz state
+      setQuizState({ currentQuestionIndex: 0, isAnswered: false, selectedOption: null, score: 0, history: [] });
+      // Clear transient notifications
+      setStudentNotifications([]);
+    }
+  }, [auth?.session]);
 
   return (
     <UserContext.Provider value={value}>
