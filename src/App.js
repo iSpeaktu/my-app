@@ -40,7 +40,7 @@ import {
   Check,
   ThumbsUp
 } from 'lucide-react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherRoster, getStudentHistoryForTeacher, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, getAchievements, upsertAchievement, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, createTeacherInvite, assignStudentToTeacher, redeemTeacherInvite, getTeacherNameByUserId, getTeacherStudents, findStudentEmailByUsername, studentAuthResetPassword, recordLessonHistory, updateStudentProgress, getStudentProgress, getStudentLessonHistory, createNotification, getNotifications, getAchievements, upsertAchievement, upsertStudentProfile, upsertProfile, getProfile, deleteNotification, clearNotificationsByType, cleanupLessonHistoryLatest, uploadAvatar } from './supabaseClient';
 
 // --- DESIGN TOKENS ---
 const COLORS = {
@@ -170,6 +170,7 @@ const LESSON_SKILLS = {
 export default function App() {
   const [view, setView] = useState('login'); 
   const [userName, setUserName] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
   const [loginNotice, setLoginNotice] = useState('');
@@ -182,7 +183,9 @@ export default function App() {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteConfirmed, setInviteConfirmed] = useState(false);
   const [hasAssignedTeacher, setHasAssignedTeacher] = useState(null);
-  const [studentNotifications, setStudentNotifications] = useState([]);\r\n  const [studentAchievements, setStudentAchievements] = useState([]);\r\n  const [avatarUrl, setAvatarUrl] = useState('');
+  const [studentNotifications, setStudentNotifications] = useState([]);
+  const [studentAchievements, setStudentAchievements] = useState([]);
+  const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarLoading, setAvatarLoading] = useState(false);
   
   const [onboardingData, setOnboardingData] = useState({
@@ -201,6 +204,54 @@ export default function App() {
   const [selection, setSelection] = useState({ material: null, level: null, lessonNumber: null });
   const [quizState, setQuizState] = useState({ currentQuestionIndex: 0, isAnswered: false, selectedOption: null, score: 0, history: [] });
   const [settings, setSettings] = useState({ sound: true, notifications: true, darkMode: true });
+  const VIEW_STORAGE_KEY = 'ispeaktu_last_view';
+  const SELECTION_STORAGE_KEY = 'ispeaktu_last_selection';
+
+  const getStoredView = () => {
+    try {
+      return localStorage.getItem(VIEW_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredView = (viewName) => {
+    try {
+      if (viewName) localStorage.setItem(VIEW_STORAGE_KEY, viewName);
+      else localStorage.removeItem(VIEW_STORAGE_KEY);
+    } catch {
+      return;
+    }
+  };
+
+  const getStoredSelection = () => {
+    try {
+      const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const mat = parsed?.materialId ? MATERIALS_DATA.find(m => m.id === parsed.materialId) : null;
+      return {
+        material: mat || null,
+        level: parsed?.level || null,
+        lessonNumber: parsed?.lessonNumber || null
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const setStoredSelection = (sel) => {
+    try {
+      const payload = {
+        materialId: sel?.material?.id || null,
+        level: sel?.level || null,
+        lessonNumber: sel?.lessonNumber || null
+      };
+      localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      return;
+    }
+  };
 
   const rehydrateOnboardingData = (data) => {
     if (data && data.material && data.material.id) {
@@ -209,6 +260,14 @@ export default function App() {
     }
     return data;
   };
+
+  useEffect(() => {
+    setStoredView(view);
+  }, [view]);
+
+  useEffect(() => {
+    setStoredSelection(selection);
+  }, [selection]);
 
   const getWeekStartISO = (date) => {
     const d = new Date(date);
@@ -224,20 +283,28 @@ export default function App() {
     if (!userId) return { material: null, level: null };
     const cleanupKey = `ispeaktu_history_cleanup_${userId}`;
 
-    const [profile, student, history, notifications, achievements] = await Promise.all([\r\n      getProfile(userId),\r\n      getStudentProgress(userId),\r\n      getStudentLessonHistory(userId),\r\n      getNotifications(userId),\r\n      getAchievements(userId)\r\n    ]);
+    const [profile, student, history, notifications, achievements] = await Promise.all([
+      getProfile(userId),
+      getStudentProgress(userId),
+      getStudentLessonHistory(userId),
+      getNotifications(userId),
+      getAchievements(userId)
+    ]);
     const hasStudent = !!student;
     const hasProfile = !!profile;
 
-    const normalized = (
-      profile?.username ||
+    const rawDisplayName =
       profile?.full_name ||
       sessionUser.user_metadata?.full_name ||
+      sessionUser.user_metadata?.display_name ||
+      profile?.username ||
       sessionUser.user_metadata?.username ||
       (sessionUser.email || '').split('@')[0] ||
-      ''
-    ).toLowerCase();
+      '';
+    const normalized = (rawDisplayName || '').toLowerCase();
 
     setUserName(normalized);
+    setDisplayName(rawDisplayName || normalized);
 
     if (!profile) {
       try {
@@ -331,7 +398,8 @@ export default function App() {
       }
     }
 
-    setStudentNotifications(notifications || []);\r\n    setStudentAchievements(achievements || []);
+    setStudentNotifications(notifications || []);
+    setStudentAchievements(achievements || []);
 
     if (!localStorage.getItem(cleanupKey)) {
       try {
@@ -382,7 +450,31 @@ export default function App() {
 
       const { material, level, hasStudent, hasProfile } = await loadStudentData(sessionUser);
       if (!active) return;
-      setView(material && level ? 'dashboard' : ((hasStudent || hasProfile) ? 'dashboard' : 'ob_screen1'));
+      const storedSelection = getStoredSelection();
+      if (storedSelection) setSelection(storedSelection);
+      const storedView = getStoredView();
+      const defaultView = material && level ? 'dashboard' : ((hasStudent || hasProfile) ? 'dashboard' : 'ob_screen1');
+      const allowedViews = new Set([
+        'dashboard', 'progress', 'settings', 'select_level', 'select_lesson', 'quiz', 'results',
+        'ob_screen1', 'ob_screen2', 'ob_screen3'
+      ]);
+      let nextView = defaultView;
+      if (storedView && allowedViews.has(storedView)) {
+        const sel = storedSelection || selection;
+        const hasTrack = !!sel?.material;
+        const hasLevel = !!sel?.level;
+        const hasLesson = !!sel?.lessonNumber;
+        const onboardingComplete = !!(material && level);
+        const isOnboardingView = storedView.startsWith('ob_');
+        const canRestore =
+          (!isOnboardingView || !onboardingComplete) &&
+          (storedView !== 'select_level' || hasTrack) &&
+          (storedView !== 'select_lesson' || (hasTrack && hasLevel)) &&
+          (storedView !== 'quiz' || hasLesson) &&
+          (storedView !== 'results' || hasLesson);
+        if (canRestore) nextView = storedView;
+      }
+      setView(nextView);
       setLoading(false);
     })();
     return () => { active = false; };
@@ -619,7 +711,7 @@ export default function App() {
 
     return (
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
-        <Header title={`Hello, ${userName}`} subtitle="Your learning dashboard" showStreak />
+        <Header title={`Hello, ${displayName || userName}`} subtitle="Your learning dashboard" showStreak />
         
         <div className="mb-8">
           <div className="flex justify-between items-end mb-2 text-[10px] font-bold uppercase tracking-widest text-white/60">
@@ -704,88 +796,6 @@ export default function App() {
               </div>
             </Card>
           ))}
-        </div>
-      </div>
-    );
-  };
-
-  const QuizView = () => {
-    const key = `${selection.material?.id}_${selection.level}_${selection.lessonNumber}`;
-    const content = LESSON_CONTENT[key] || LESSON_CONTENT['conv_Intermediate_1'];
-    const currentQ = content.questions[quizState.currentQuestionIndex];
-    const progress = (quizState.currentQuestionIndex / content.questions.length) * 100;
-
-    const handleAnswer = (idx) => {
-        if (quizState.isAnswered) return;
-        setQuizState({ 
-            ...quizState, 
-            selectedOption: idx, 
-            isAnswered: true,
-            score: idx === currentQ.answer ? quizState.score + 1 : quizState.score,
-            history: [...quizState.history, { 
-                question: currentQ.question, 
-                selected: idx, 
-                correct: currentQ.answer, 
-                options: currentQ.options, 
-                feedback: currentQ.feedback 
-            }]
-        });
-    };
-
-    const nextStep = () => {
-        if (quizState.currentQuestionIndex < content.questions.length - 1) {
-            setQuizState({ ...quizState, currentQuestionIndex: quizState.currentQuestionIndex + 1, isAnswered: false, selectedOption: null });
-        } else {
-            const perc = Math.round((quizState.score / content.questions.length) * 100);
-            const fails = quizState.history.filter(h => h.selected !== h.correct).map(h => ({ 
-                question: h.question, 
-                answer: h.options[h.selected], 
-                correct: h.options[h.correct] 
-            }));
-            recordActivity(perc >= 70, perc, fails);
-            setView('results');
-        }
-    };
-
-    return (
-      <div className="max-w-2xl mx-auto py-8 px-6 flex flex-col min-h-screen animate-in fade-in">
-        <div className="flex items-center gap-6 mb-12">
-          <button onClick={() => setView('dashboard')} className="text-white opacity-40"><XCircle size={28} /></button>
-          <div className="flex-1 h-2 bg-[#16161D] rounded-full overflow-hidden border border-[#2D2D3A]">
-            <div className="h-full bg-[#00F2FF] transition-all duration-500" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="text-[10px] font-bold text-white/40">{quizState.currentQuestionIndex + 1} / {content.questions.length}</div>
-        </div>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-white mb-10 leading-relaxed">{currentQ.question}</h2>
-          <div className="space-y-4">
-            {currentQ.options.map((opt, i) => (
-              <button 
-                key={i} disabled={quizState.isAnswered} onClick={() => handleAnswer(i)} 
-                className={`w-full p-6 rounded-2xl border text-left transition-all ${quizState.isAnswered ? (i === currentQ.answer ? 'border-[#00FF94] bg-[#00FF9408]' : (i === quizState.selectedOption ? 'border-[#FF2E63] bg-[#FF2E6308]' : 'border-[#2D2D3A] opacity-40')) : 'border-[#2D2D3A] bg-[#16161D] hover:bg-[#1C1C26]'}`}
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center border text-xs font-bold ${quizState.isAnswered && i === currentQ.answer ? 'bg-[#00FF94] text-[#0A0A0C]' : 'opacity-40'}`}>{String.fromCharCode(65+i)}</div>
-                  <span className="font-medium text-lg">{opt}</span>
-                  {quizState.isAnswered && i === currentQ.answer && <CheckCircle2 size={20} className="ml-auto text-[#00FF94]" />}
-                </div>
-              </button>
-            ))}
-          </div>
-          {quizState.isAnswered && (
-            <div className="mt-8 p-6 rounded-2xl border bg-white/5 border-white/10 animate-fade-in text-sm text-white/80">
-                <p><strong className="text-[#00F2FF]">{quizState.selectedOption === currentQ.answer ? 'Correct!' : 'Review:'}</strong> {currentQ.feedback}</p>
-            </div>
-          )}
-        </div>
-        <div className="fixed bottom-0 left-0 w-full p-8 border-t border-[#2D2D3A] bg-[#0A0A0C]/80 backdrop-blur-md flex justify-end">
-            <button 
-              disabled={!quizState.isAnswered} 
-              onClick={nextStep} 
-              className={`px-10 py-4 rounded-xl font-bold bg-[#00F2FF] text-[#0A0A0C] transition-all shadow-lg ${!quizState.isAnswered && 'opacity-20 cursor-not-allowed'}`}
-            >
-              {quizState.currentQuestionIndex === content.questions.length - 1 ? 'Finish Results' : 'Next Question'}
-            </button>
         </div>
       </div>
     );
@@ -937,7 +947,36 @@ export default function App() {
       { id: 6, name: "Language Master", desc: "Complete 40 lessons", icon: Award, achieved: uniquePassedCount >= 40 },
       { id: 7, name: "Language Legend", desc: "Complete 60 lessons", icon: Trophy, achieved: uniquePassedCount >= 60 },
       { id: 8, name: "Ultimate Sage", desc: "Complete 100 lessons", icon: BrainCircuit, achieved: uniquePassedCount >= 100 },
-    ];\r\n\r\n    const achievedNames = badgeData.filter(b => b.achieved).map(b => b.name);\r\n    const achievedKey = achievedNames.slice().sort().join('|');\r\n    const storedKey = (studentAchievements || []).map(a => a.badge_name).sort().join('|');\r\n\r\n    useEffect(() => {\r\n      let active = true;\r\n      (async () => {\r\n        if (!achievedNames.length) return;\r\n        const existing = new Set((studentAchievements || []).map(a => a.badge_name));\r\n        const missing = achievedNames.filter(name => !existing.has(name));\r\n        if (missing.length === 0) return;\r\n        const { data: sessionData } = await supabase.auth.getSession();\r\n        const userId = sessionData?.session?.user?.id;\r\n        if (!userId) return;\r\n        for (const badgeName of missing) {\r\n          const ok = await upsertAchievement(userId, badgeName);\r\n          if (ok && active) {\r\n            setStudentAchievements(prev => {\r\n              const exists = (prev || []).some(a => a.badge_name === badgeName);\r\n              if (exists) return prev;\r\n              return [...(prev || []), { badge_name: badgeName, achieved_at: new Date().toISOString() }];\r\n            });\r\n          }\r\n        }\r\n      })();\r\n      return () => { active = false; };\r\n    }, [achievedKey, storedKey]);\r\n
+    ];
+
+    const achievedNames = badgeData.filter(b => b.achieved).map(b => b.name);
+    const achievedKey = achievedNames.slice().sort().join('|');
+    const storedKey = (studentAchievements || []).map(a => a.badge_name).sort().join('|');
+
+    useEffect(() => {
+      let active = true;
+      (async () => {
+        if (!achievedNames.length) return;
+        const existing = new Set((studentAchievements || []).map(a => a.badge_name));
+        const missing = achievedNames.filter(name => !existing.has(name));
+        if (missing.length === 0) return;
+        const { data: sessionData } = await supabase.auth.getSession();
+        const userId = sessionData?.session?.user?.id;
+        if (!userId) return;
+        for (const badgeName of missing) {
+          const ok = await upsertAchievement(userId, badgeName);
+          if (ok && active) {
+            setStudentAchievements(prev => {
+              const exists = (prev || []).some(a => a.badge_name === badgeName);
+              if (exists) return prev;
+              return [...(prev || []), { badge_name: badgeName, achieved_at: new Date().toISOString() }];
+            });
+          }
+        }
+      })();
+      return () => { active = false; };
+    }, [achievedKey, storedKey]);
+
 
     return (
       <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
@@ -1263,7 +1302,7 @@ export default function App() {
       try {
         const teacherUserId = await redeemTeacherInvite(getStoredInviteToken());
         if (teacherUserId && active) {
-          await assignStudentToTeacher(user.id, teacherUserId);
+          await assignStudentToTeacher(user.id, teacherUserId, getStoredInviteToken());
           clearInviteToken();
           clearStoredInviteToken();
           setInviteConfirmedValue(false);
@@ -1414,7 +1453,7 @@ export default function App() {
                       try {
                         const teacherUserId = await redeemTeacherInvite(inviteToken);
                         if (teacherUserId) {
-                          await assignStudentToTeacher(user.id, teacherUserId);
+                          await assignStudentToTeacher(user.id, teacherUserId, inviteToken);
                           clearInviteToken();
                           clearStoredInviteToken();
                           setInviteConfirmedValue(false);
@@ -1703,7 +1742,7 @@ export default function App() {
                           try {
                             const teacherUserId = await redeemTeacherInvite(inviteToken);
                             if (teacherUserId) {
-                              await assignStudentToTeacher(user.id, teacherUserId);
+                              await assignStudentToTeacher(user.id, teacherUserId, inviteToken);
                               clearInviteToken();
                               clearStoredInviteToken();
                               setInviteConfirmedValue(false);
@@ -1716,6 +1755,7 @@ export default function App() {
 
                         const normalized = (user?.user_metadata?.username || (user?.email || '').split('@')[0] || email).toLowerCase();
                         setUserName(normalized);
+                        setDisplayName(fullName || normalized);
 
                         const baseOnboarding = { material: null, level: null, lessonsPerWeek: onboardingData.lessonsPerWeek };
                         setOnboardingData(baseOnboarding);
@@ -1808,27 +1848,8 @@ export default function App() {
       {view === 'ob_screen1' && (
         <div className="max-w-md mx-auto min-h-[90vh] flex flex-col items-center justify-center px-8 animate-in fade-in">
             <h2 className="text-2xl font-bold mb-10 text-center leading-snug">Do you study English with<br/><span className="text-[#00F2FF]">iSpeaktu?</span></h2>
-            <div className="w-full mb-8">
-                <div className="flex justify-between items-center mb-2 text-[10px] font-black uppercase tracking-widest text-white/40">
-                    <span>Lessons Per Week</span>
-                    <span className="text-[#00F2FF]">{onboardingData.lessonsPerWeek}</span>
-                </div>
-                <input
-                    id="onboarding-lessons-per-week"
-                    name="onboarding_lessons_per_week"
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={onboardingData.lessonsPerWeek}
-                    onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setOnboardingData({ ...onboardingData, lessonsPerWeek: val });
-                    }}
-                    className="w-full accent-[#00F2FF]"
-                />
-            </div>
             <button onClick={() => setView('ob_screen2')} aria-label="Yes, I study English with iSpeaktu" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-4 font-bold text-lg hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">Yes,</button>
-            <button onClick={() => { persistData({ userName, onboardingData, streakState }); setView('dashboard'); }} aria-label="No, I prefer self-studying" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl font-bold text-lg hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">No, I'm self-studying</button>
+            <button onClick={() => { persistData({ userName, onboardingData, streakState }); setView('ob_screen4'); }} aria-label="No, I prefer self-studying" className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl font-bold text-lg hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-white/20 focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">No, I'm self-studying</button>
         </div>
       )}
 
@@ -1852,7 +1873,7 @@ export default function App() {
                 const finalOb = { ...onboardingData, level: l };
                 setOnboardingData(finalOb); 
                 persistData({ userName, onboardingData: finalOb, streakState }); 
-                setView('dashboard'); 
+                setView('ob_screen4'); 
               }} aria-label={`Select ${l} as your level`} className="w-full p-6 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 font-bold text-lg hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all">
                 {l}
               </button>
@@ -1860,10 +1881,59 @@ export default function App() {
         </div>
       )}
 
+      {view === 'ob_screen4' && (
+        <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-right-10">
+            <h2 className="text-2xl font-bold mb-8 text-center">How many lessons per week?</h2>
+            <div className="grid grid-cols-2 gap-3 w-full">
+              {[1,2,3,4,5].map(n => (
+                <button
+                  key={n}
+                  onClick={() => {
+                    const updated = { ...onboardingData, lessonsPerWeek: n };
+                    setOnboardingData(updated);
+                    persistData({ userName, onboardingData: updated, streakState });
+                  }}
+                  aria-label={`Select ${n} lessons per week`}
+                  className={`p-5 rounded-2xl border font-bold text-lg transition-all ${onboardingData.lessonsPerWeek === n ? 'bg-[#00F2FF10] border-[#00F2FF] text-white' : 'bg-[#16161D] border-[#2D2D3A] text-white hover:border-[#00F2FF]'}`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                persistData({ userName, onboardingData, streakState });
+                setView('dashboard');
+              }}
+              aria-label="Complete onboarding"
+              className="w-full mt-6 bg-[#00F2FF] text-[#0A0A0C] py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+            >
+              Complete
+            </button>
+            <button
+              onClick={() => setView('ob_screen3')}
+              aria-label="Go back to level selection"
+              className="w-full mt-3 bg-[#16161D] text-white py-3 rounded-2xl font-bold text-lg border border-[#2D2D3A] focus:outline-none focus:ring-2 focus:ring-[#2D2D3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all"
+            >
+              Back
+            </button>
+        </div>
+      )}
+
       {view === 'dashboard' && <Dashboard />}
       {view === 'select_level' && <SelectionPath />}
       {view === 'select_lesson' && <LessonSelectionView />}
-      {view === 'quiz' && <QuizView />}
+      {view === 'quiz' && (
+        <QuizView
+          selection={selection}
+          setView={setView}
+          quizState={quizState}
+          setQuizState={setQuizState}
+          recordActivity={recordActivity}
+          displayName={displayName}
+          userName={userName}
+        />
+      )}
       {view === 'results' && <ResultsView />}
       {view === 'progress' && <ProgressView />}
       {view === 'settings' && (
@@ -2033,6 +2103,191 @@ export default function App() {
   );
 }
 
+function QuizView({ selection, setView, quizState, setQuizState, recordActivity, displayName, userName }) {
+  const [dbContent, setDbContent] = useState(null);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [dbError, setDbError] = useState('');
+  const [dbNoQuestions, setDbNoQuestions] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const loadLessonFromDb = async () => {
+      if (!selection.material?.id || !selection.level || !selection.lessonNumber) {
+        if (active) {
+          setDbContent(null);
+          setDbError('');
+          setDbNoQuestions(false);
+          setDbLoading(false);
+        }
+        return;
+      }
+      try {
+        if (active) {
+          setDbLoading(true);
+          setDbError('');
+          setDbNoQuestions(false);
+        }
+        console.info('[QuizView] selection', {
+          track_id: selection.material?.id || null,
+          level: selection.level || null,
+          lesson_number: selection.lessonNumber || null
+        });
+        const { data: lessonRow, error: lessonErr } = await supabase
+          .from('lessons')
+          .select('id, title, lesson_questions (id, question_text, explanation, sort_order, lesson_choices (id, choice_text, is_correct, sort_order))')
+          .eq('track_id', selection.material.id)
+          .eq('level', selection.level)
+          .eq('lesson_number', selection.lessonNumber)
+          .maybeSingle();
+        if (lessonErr) throw lessonErr;
+        const questions = (lessonRow?.lesson_questions || [])
+          .slice()
+          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+          .map(q => {
+            const choices = (q.lesson_choices || []).slice().sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            const answerIndex = choices.findIndex(c => c.is_correct);
+            return {
+              question: q.question_text,
+              options: choices.map(c => c.choice_text),
+              answer: answerIndex >= 0 ? answerIndex : 0,
+              feedback: q.explanation || ''
+            };
+          }).filter(q => q.question && q.options && q.options.length > 0);
+        console.info('[QuizView] db result', {
+          lesson_id: lessonRow?.id || null,
+          lesson_title: lessonRow?.title || '',
+          raw_question_count: (lessonRow?.lesson_questions || []).length,
+          usable_question_count: questions.length,
+          choice_count_per_question: (lessonRow?.lesson_questions || []).map(q => (q.lesson_choices || []).length)
+        });
+        if (active) {
+          setDbContent({ title: lessonRow?.title || '', questions });
+          setDbNoQuestions(!lessonRow?.id || questions.length === 0);
+        }
+      } catch (err) {
+        if (active) {
+          setDbError(err?.message || 'Failed to load lesson');
+          setDbContent(null);
+          setDbNoQuestions(false);
+        }
+      } finally {
+        if (active) setDbLoading(false);
+      }
+    };
+    loadLessonFromDb();
+    return () => { active = false; };
+  }, [selection.material?.id, selection.level, selection.lessonNumber]);
+
+  const content = dbContent;
+  const studentGreetingName = displayName || userName || 'Student';
+  const hasQuestions = !!(content && content.questions && content.questions.length > 0);
+  if (dbLoading) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 px-6 flex flex-col min-h-screen animate-in fade-in">
+        <div className="mb-6 text-center text-white/60 text-sm font-bold">Loading lesson...</div>
+      </div>
+    );
+  }
+
+  if (dbError) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 px-6 flex flex-col min-h-screen animate-in fade-in">
+        <div className="mb-6 text-center text-[#FF2E63] text-sm font-bold">{dbError}</div>
+      </div>
+    );
+  }
+
+  if (dbNoQuestions || !hasQuestions) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 px-6 flex flex-col min-h-screen animate-in fade-in">
+        <div className="mb-6 text-center text-white/70 text-sm font-bold">
+          Hi {studentGreetingName}, lessons will be available soon. You can check back later.
+        </div>
+      </div>
+    );
+  }
+
+  const currentQ = content.questions[quizState.currentQuestionIndex];
+  const progress = (quizState.currentQuestionIndex / content.questions.length) * 100;
+
+  const handleAnswer = (idx) => {
+    if (quizState.isAnswered) return;
+    setQuizState({
+      ...quizState,
+      selectedOption: idx,
+      isAnswered: true,
+      score: idx === currentQ.answer ? quizState.score + 1 : quizState.score,
+      history: [...quizState.history, {
+        question: currentQ.question,
+        selected: idx,
+        correct: currentQ.answer,
+        options: currentQ.options,
+        feedback: currentQ.feedback
+      }]
+    });
+  };
+
+  const nextStep = () => {
+    if (quizState.currentQuestionIndex < content.questions.length - 1) {
+      setQuizState({ ...quizState, currentQuestionIndex: quizState.currentQuestionIndex + 1, isAnswered: false, selectedOption: null });
+    } else {
+      const perc = Math.round((quizState.score / content.questions.length) * 100);
+      const fails = quizState.history.filter(h => h.selected !== h.correct).map(h => ({
+        question: h.question,
+        answer: h.options[h.selected],
+        correct: h.options[h.correct]
+      }));
+      recordActivity(perc >= 70, perc, fails);
+      setView('results');
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-8 px-6 flex flex-col min-h-screen animate-in fade-in">
+      <div className="flex items-center gap-6 mb-12">
+        <button onClick={() => setView('dashboard')} className="text-white opacity-40"><XCircle size={28} /></button>
+        <div className="flex-1 h-2 bg-[#16161D] rounded-full overflow-hidden border border-[#2D2D3A]">
+          <div className="h-full bg-[#00F2FF] transition-all duration-500" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="text-[10px] font-bold text-white/40">{quizState.currentQuestionIndex + 1} / {content.questions.length}</div>
+      </div>
+      <div className="flex-1">
+        <h2 className="text-2xl font-bold text-white mb-10 leading-relaxed">{currentQ.question}</h2>
+        <div className="space-y-4">
+          {currentQ.options.map((opt, i) => (
+            <button
+              key={i}
+              disabled={quizState.isAnswered}
+              onClick={() => handleAnswer(i)}
+              className={`w-full p-6 rounded-2xl border text-left transition-all ${quizState.isAnswered ? (i === currentQ.answer ? 'border-[#00FF94] bg-[#00FF9408]' : (i === quizState.selectedOption ? 'border-[#FF2E63] bg-[#FF2E6308]' : 'border-[#2D2D3A] opacity-40')) : 'border-[#2D2D3A] bg-[#16161D] hover:bg-[#1C1C26]'}`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center border text-xs font-bold ${quizState.isAnswered && i === currentQ.answer ? 'bg-[#00FF94] text-[#0A0A0C]' : 'opacity-40'}`}>{String.fromCharCode(65 + i)}</div>
+                <span className="font-medium text-lg">{opt}</span>
+                {quizState.isAnswered && i === currentQ.answer && <CheckCircle2 size={20} className="ml-auto text-[#00FF94]" />}
+              </div>
+            </button>
+          ))}
+        </div>
+        {quizState.isAnswered && (
+          <div className="mt-8 p-6 rounded-2xl border bg-white/5 border-white/10 animate-fade-in text-sm text-white/80">
+            <p><strong className="text-[#00F2FF]">{quizState.selectedOption === currentQ.answer ? 'Correct!' : 'Review:'}</strong> {currentQ.feedback}</p>
+          </div>
+        )}
+      </div>
+      <div className="fixed bottom-0 left-0 w-full p-8 border-t border-[#2D2D3A] bg-[#0A0A0C]/80 backdrop-blur-md flex justify-end">
+        <button
+          disabled={!quizState.isAnswered}
+          onClick={nextStep}
+          className={`px-10 py-4 rounded-xl font-bold bg-[#00F2FF] text-[#0A0A0C] transition-all shadow-lg ${!quizState.isAnswered && 'opacity-20 cursor-not-allowed'}`}
+        >
+          {quizState.currentQuestionIndex === content.questions.length - 1 ? 'Finish Results' : 'Next Question'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Minimal TutorDashboard subcomponent within the same file for consistency
 function TutorDashboard({ onLogout }) {
     const [searchQuery, setSearchQuery] = useState('');
@@ -2046,6 +2301,8 @@ function TutorDashboard({ onLogout }) {
     const [students, setStudents] = useState([]);
     const [reminders, setReminders] = useState({});
     const [praises, setPraises] = useState({});
+    const [lastSeenMap, setLastSeenMap] = useState({});
+    const tutorIdRef = useRef(null);
 
     const getTrackLabel = (materialId) => {
         const m = MATERIALS_DATA.find(x => x.id === materialId);
@@ -2063,13 +2320,58 @@ function TutorDashboard({ onLogout }) {
     const setLocalSentMap = (key, value) => {
         localStorage.setItem(key, JSON.stringify(value || {}));
     };
+    const getLastSeenKey = (teacherId) => `ispeaktu_tutor_last_seen_${teacherId}`;
+    const getLocalLastSeenMap = (key) => {
+        try {
+            return JSON.parse(localStorage.getItem(key) || '{}');
+        } catch {
+            return {};
+        }
+    };
+    const setLocalLastSeenMap = (key, value) => {
+        localStorage.setItem(key, JSON.stringify(value || {}));
+    };
+    const getSelectedStudentKey = (teacherId) => `ispeaktu_tutor_selected_${teacherId}`;
     
     useEffect(() => {
         let active = true;
         let pollId = null;
         const fetchStudents = async () => {
-            const list = await getTeacherRoster();
+            const list = await getTeacherStudents();
             if (active) setStudents(list);
+            const currentTeacherId = tutorIdRef.current;
+            if (active && currentTeacherId) {
+                const key = getLastSeenKey(currentTeacherId);
+                setLastSeenMap(prev => {
+                    const next = { ...(prev || {}) };
+                    let changed = false;
+                    (list || []).forEach(s => {
+                        if (!next[s.id] && s.history && s.history.length > 0) {
+                            const lastDate = s.history[s.history.length - 1]?.date;
+                            if (lastDate) {
+                                next[s.id] = lastDate;
+                                changed = true;
+                            }
+                        }
+                    });
+                    if (changed) {
+                        setLocalLastSeenMap(key, next);
+                        return next;
+                    }
+                    return prev;
+                });
+                if (!selectedStudent) {
+                    try {
+                        const storedId = localStorage.getItem(getSelectedStudentKey(currentTeacherId));
+                        if (storedId) {
+                            const found = (list || []).find(s => s.id === storedId);
+                            if (found) setSelectedStudent(found);
+                        }
+                    } catch {
+                        return;
+                    }
+                }
+            }
         };
         fetchStudents();
         pollId = setInterval(fetchStudents, 10000);
@@ -2085,6 +2387,10 @@ function TutorDashboard({ onLogout }) {
             const { data: sessionData } = await supabase.auth.getSession();
             const teacherId = sessionData?.session?.user?.id;
             if (!teacherId || !active) return;
+            tutorIdRef.current = teacherId;
+            const lastSeenKey = getLastSeenKey(teacherId);
+            const localSeen = getLocalLastSeenMap(lastSeenKey);
+            if (active) setLastSeenMap(localSeen);
             const reminderKey = `ispeaktu_tutor_reminders_${teacherId}`;
             const praiseKey = `ispeaktu_tutor_praises_${teacherId}`;
             const localReminders = getLocalSentMap(reminderKey);
@@ -2122,40 +2428,10 @@ function TutorDashboard({ onLogout }) {
         };
     }, []);
     
-    const filteredStudents = students.filter(s => 
+    const filteredStudents = students.filter(s =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const loadStudentHistory = async (student) => {
-        if (!student || student.historyLoaded) return;
-        const history = await getStudentHistoryForTeacher(student.id);
-        const enriched = (history || []).map(h => ({
-            ...h,
-            material: student.lastMaterialId || null,
-            level: student.lastLevel || null
-        }));
-        const last = enriched.length ? enriched[enriched.length - 1] : null;
-        setStudents(prev => prev.map(s => {
-            if (s.id !== student.id) return s;
-            return {
-                ...s,
-                history: enriched,
-                historyLoaded: true,
-                lastScore: typeof last?.score === 'number' ? last.score : s.lastScore,
-                lastLessonId: last?.lessonId || s.lastLessonId
-            };
-        }));
-        if (selectedStudent?.id === student.id) {
-            setSelectedStudent(prev => ({
-                ...prev,
-                history: enriched,
-                historyLoaded: true,
-                lastScore: typeof last?.score === 'number' ? last.score : prev.lastScore,
-                lastLessonId: last?.lessonId || prev.lastLessonId
-            }));
-        }
-    };
-    
     const handleRemind = async (e, s, lessonId) => {
         e.stopPropagation();
         // Prevent reminders for students with no quiz history
@@ -2231,7 +2507,18 @@ function TutorDashboard({ onLogout }) {
         return (
           <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-right-8">
             <button
-              onClick={() => { setSelectedStudent(null); setExpandedQuiz(null); }}
+              onClick={() => {
+                setSelectedStudent(null);
+                setExpandedQuiz(null);
+                const currentTeacherId = tutorIdRef.current;
+                if (currentTeacherId) {
+                  try {
+                    localStorage.removeItem(getSelectedStudentKey(currentTeacherId));
+                  } catch {
+                    return;
+                  }
+                }
+              }}
               aria-label="Back to student overview"
               className="flex items-center gap-2 text-[#00F2FF] font-black uppercase text-[10px] tracking-widest mb-6 group focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] rounded px-2 py-1 transition-all"
             >
@@ -2495,11 +2782,46 @@ function TutorDashboard({ onLogout }) {
                 </div>
             ) : filteredStudents.map(s => {
                 const needsRetake = s.lastScore < 70;
+                const quizCount = (s.history && s.history.length) ? s.history.length : 0;
+                const lastHistory = (s.history && s.history.length)
+                  ? s.history.slice().sort((a, b) => new Date(a.date) - new Date(b.date))[s.history.length - 1]
+                  : null;
+                const lastLessonId = lastHistory?.lessonId || null;
+                const reminderKey = lastLessonId ? getLessonKey(s.id, lastLessonId, 'reminder') : null;
+                const praiseKey = lastLessonId ? getLessonKey(s.id, lastLessonId, 'praise') : null;
+                const feedbackSentForLast = lastLessonId
+                  ? (!!reminders[reminderKey] || !!praises[praiseKey])
+                  : false;
                 return (
                     <div 
                         key={s.id} 
-                        onClick={() => { setSelectedStudent(s); setExpandedQuiz(null); loadStudentHistory(s); }}
-                        onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && (e.target === e.currentTarget)) { e.preventDefault(); setSelectedStudent(s); setExpandedQuiz(null); loadStudentHistory(s); } }}
+                        onClick={() => {
+                          setSelectedStudent(s);
+                          setExpandedQuiz(null);
+                          const currentTeacherId = tutorIdRef.current;
+                          if (currentTeacherId) {
+                            try {
+                              localStorage.setItem(getSelectedStudentKey(currentTeacherId), s.id);
+                            } catch {
+                              return;
+                            }
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && (e.target === e.currentTarget)) {
+                            e.preventDefault();
+                            setSelectedStudent(s);
+                            setExpandedQuiz(null);
+                            const currentTeacherId = tutorIdRef.current;
+                            if (currentTeacherId) {
+                              try {
+                                localStorage.setItem(getSelectedStudentKey(currentTeacherId), s.id);
+                              } catch {
+                                return;
+                              }
+                            }
+                          }
+                        }}
                         role="button"
                         tabIndex={0}
                         aria-label={`View details for student ${s.name}, ${s.progress} level, ${s.lastScore}% score`}
@@ -2521,7 +2843,31 @@ function TutorDashboard({ onLogout }) {
                             </div>
                         </div>
                         
-                        {null}
+                                                <div className="flex flex-col items-end gap-2">
+                            <div className="text-[9px] font-black uppercase tracking-widest text-white/40">{quizCount} Quiz{quizCount === 1 ? '' : 'zes'} Taken</div>
+                            {(() => {
+                                const lastSeen = lastSeenMap[s.id];
+                                const newQuizCount = lastSeen
+                                  ? (s.history || []).filter(h => new Date(h.date) > new Date(lastSeen)).length
+                                  : 0;
+                                if (newQuizCount <= 0) return null;
+                                if (feedbackSentForLast) return null;
+                                return (
+                                  <div className="px-3 py-1 rounded-lg bg-[#00F2FF20] border border-[#00F2FF50] text-[9px] font-black uppercase tracking-widest text-[#00F2FF]">
+                                    {newQuizCount} New quiz{newQuizCount > 1 ? 'es' : ''} taken
+                                  </div>
+                                );
+                            })()}
+                            {(() => {
+                                if (!lastLessonId) return null;
+                                if (feedbackSentForLast) return null;
+                                return (
+                                  <div className="px-3 py-1 rounded-lg bg-[#FF2E6310] border border-[#FF2E6340] text-[9px] font-black uppercase tracking-widest text-[#FF2E63]">
+                                    Feedback not sent
+                                  </div>
+                                );
+                            })()}
+                        </div>
                     </div>
                 );
             })}
@@ -2529,6 +2875,25 @@ function TutorDashboard({ onLogout }) {
       </div>
     );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
