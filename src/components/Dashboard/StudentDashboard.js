@@ -3,6 +3,8 @@ import React from 'react';
 import { ThumbsUp, Bell, ChevronRight, X } from 'lucide-react';
 import { Header, Card, Icon } from '../common';
 import { MATERIALS_DATA } from '../../constants/materials';
+import { useMaterials } from '../../hooks/useMaterials';
+import { useNotifications } from '../../hooks/useNotifications';
 import { supabase, deleteNotification, getNotifications } from '../../config/supabase';
 
 /**
@@ -41,6 +43,12 @@ export default function StudentDashboard() {
   const setView = auth.setView;
   const quizState = user.quizState;
   const setQuizState = user.setQuizState;
+
+  // Initialize notifications polling
+  useNotifications(setStudentNotifications);
+
+  const { materials: dbMaterials } = useMaterials();
+  const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
 
   const handleLogout = async () => {
     try {
@@ -150,7 +158,7 @@ export default function StudentDashboard() {
 
       <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Explore Materials</h4>
       <div className="grid grid-cols-1 gap-4">
-        {MATERIALS_DATA.filter(m => m.id !== onboardingData.material?.id).map((mat) => (
+        {materials.filter(m => m.id !== onboardingData.material?.id).map((mat) => (
           <Card key={mat.id} onClick={() => { setSelection({ material: mat }); setView('select_level'); }}>
             <div className="flex items-center gap-5">
               <div className="w-12 h-12 rounded-xl bg-[#1C1C26] border border-[#2D2D3A] flex items-center justify-center">

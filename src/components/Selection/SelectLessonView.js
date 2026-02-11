@@ -4,6 +4,7 @@ import { useUserContext } from '../../context/UserContext';
 import Header from '../common/Header';
 import Icon from '../common/Icon';
 import { MATERIALS_DATA } from '../../constants/materials';
+import { useMaterials } from '../../hooks/useMaterials';
 
 export default function SelectLessonView(props) {
   const auth = useAuthContext();
@@ -18,7 +19,9 @@ export default function SelectLessonView(props) {
   const material = selection?.material || null;
   const level = selection?.level || null;
 
-  const materialSpec = material || MATERIALS_DATA.find(m => m.id === selection?.material?.id) || null;
+  const { materials: dbMaterials } = useMaterials();
+  const sourceMaterials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
+  const materialSpec = material || sourceMaterials.find(m => m.id === selection?.material?.id) || null;
 
   if (!materialSpec || !level) {
     return (

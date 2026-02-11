@@ -1,6 +1,6 @@
 // Extracted from App.js - Invite token hook (original lines 1177-1240)
 import { useEffect } from 'react';
-import { getStudentProgress, getTeacherNameByUserId, supabase } from '../config/supabase';
+import { getStudentProgress, getTeacherNameByUserId, redeemTeacherInvite, supabase } from '../config/supabase';
 import { useAuthContext } from '../context/AuthContext';
 
 /**
@@ -69,6 +69,17 @@ export const useInviteToken = () => {
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
+
+      // Resolve teacher user id from token so we can show teacher display name
+      try {
+        const teacherUserId = await redeemTeacherInvite(token).catch(() => null);
+        if (teacherUserId) {
+          const teacherName = await getTeacherNameByUserId(teacherUserId).catch(() => null);
+          if (teacherName) auth.setInviteTeacherName(teacherName);
+        }
+      } catch (e) {
+        // ignore resolution failure — we'll still allow confirmation UI
+      }
 
       if (userId) {
         const studentRow = await getStudentProgress(userId);

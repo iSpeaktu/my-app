@@ -51,8 +51,34 @@ function AppContent() {
 
   // Confirm teacher invitation
   const confirmInvite = async () => {
-    // TODO: Implement invite confirmation logic using Supabase API
-    auth.setInviteConfirmed(true);
+    try {
+      const token = getStoredInviteToken();
+      if (!token) return;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (!userId) {
+        // Not signed in; show login/signup flow — keep invite token stored
+        auth.setInviteConfirmed(true);
+        return;
+      }
+      // Resolve teacher id and assign
+      const { redeemTeacherInvite, assignStudentToTeacher } = await import('./config/supabase');
+      const teacherId = await redeemTeacherInvite(token);
+      if (!teacherId) throw new Error('Invalid or expired invite');
+      await assignStudentToTeacher(userId, teacherId, token);
+      // Fetch teacher display name and set on auth so UI updates immediately
+      const { getTeacherNameByUserId } = await import('./config/supabase');
+      const teacherName = await getTeacherNameByUserId(teacherId).catch(() => null);
+      if (teacherName) auth.setStudentTeacherName(teacherName);
+      // Clear token and mark confirmed
+      clearInviteToken();
+      clearStoredInviteToken();
+      auth.setInviteConfirmed(true);
+      auth.setInviteTeacherName('');
+      auth.setHasAssignedTeacher(true);
+    } catch (err) {
+      console.error('Confirm invite failed:', err);
+    }
   };
 
   // Cancel teacher invitation
@@ -94,11 +120,15 @@ function AppContent() {
       `}</style>
 
       {/* Invite confirmation modal */}
-      {auth.inviteTeacherName && !auth.inviteConfirmed && getStoredInviteToken() && auth.hasAssignedTeacher === false && (
+      {getStoredInviteToken() && !auth.inviteConfirmed && auth.hasAssignedTeacher !== true && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6">
           <div className="max-w-lg w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl p-6 text-center">
             <h3 className="text-xl font-extrabold mb-2">Confirm Teacher Invitation</h3>
-            <p className="text-white/70 mb-4">You were invited to join <strong className="text-[#00F2FF]">{auth.inviteTeacherName}</strong>.</p>
+            <p className="text-white/70 mb-4">{
+              auth.inviteTeacherName
+                ? (<span>You were invited to join <strong className="text-[#00F2FF]">{auth.inviteTeacherName}</strong>.</span>)
+                : 'You were invited to join a teacher. Confirm to accept the invitation.'
+            }</p>
             <button onClick={confirmInvite} aria-label="Confirm teacher invitation" className="w-full px-6 py-3 rounded-xl bg-[#00F2FF] text-[#0A0A0C] font-bold text-lg mb-3 focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#16161D] transition-all">Confirm</button>
             <button onClick={cancelInvite} aria-label="Cancel teacher invitation" className="w-full text-red-500 font-bold bg-transparent py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-[#16161D] rounded transition-all">Cancel</button>
             <p className="text-xs text-white/50 mt-3">If this is not your teacher, do not accept. Only accept invitations from your teacher.</p>

@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import { useAuthContext } from './AuthContext';
 import { updateStudentData } from '../config/supabase';
 import { useStudentData } from '../hooks/useStudentData';
+import { useStreak } from '../hooks/useStreak';
 
 // Original App.js lines 188-208: User profile, progress, and settings state
 export const UserContext = createContext();
@@ -39,6 +40,9 @@ export const UserProvider = ({ children }) => {
 
   const auth = useAuthContext();
 
+  // Initialize useStreak hook to get recordActivity for quiz completion
+  const { recordActivity } = useStreak(streakState, setStreakState, onboardingData, selection);
+
   // Attempt to restore onboarding/selection from the database when a session
   // becomes available. We call the shared loader to read current material/level
   // and then update the UserContext state so the UI reflects persisted values.
@@ -48,7 +52,7 @@ export const UserProvider = ({ children }) => {
     if (auth && auth.session && auth.session.user) {
       (async () => {
         try {
-          const { material, level } = await loadStudentData(
+          const { material, level, teacherName, hasAssignedTeacher, lessonsPerWeek, streakState: restoredStreakState, notifications: restoredNotifications, achievements: restoredAchievements } = await loadStudentData(
             auth.session.user,
             auth.userName,
             auth.setUserName,
@@ -56,10 +60,21 @@ export const UserProvider = ({ children }) => {
             auth.setDisplayName
           );
           if (!mounted) return;
-          if (material || level) {
-            setOnboardingData(prev => ({ ...prev, material: material || prev.material, level: level || prev.level }));
+          if (material || level || lessonsPerWeek) {
+            setOnboardingData(prev => ({ ...prev, material: material || prev.material, level: level || prev.level, lessonsPerWeek: lessonsPerWeek || prev.lessonsPerWeek }));
             try { setSelectionWrapped({ material, level, lessonNumber: null }); } catch (e) {}
           }
+          if (restoredStreakState) {
+            setStreakState(restoredStreakState);
+          }
+          if (restoredNotifications) {
+            setStudentNotifications(restoredNotifications);
+          }
+          if (restoredAchievements) {
+            setStudentAchievements(restoredAchievements);
+          }
+          try { if (teacherName) auth.setStudentTeacherName(teacherName); } catch (e) {}
+          try { auth.setHasAssignedTeacher(typeof hasAssignedTeacher === 'boolean' ? hasAssignedTeacher : !!teacherName); } catch (e) {}
         } catch (e) {
           console.warn('Failed to restore student data on session restore', e);
         }
@@ -79,10 +94,12 @@ export const UserProvider = ({ children }) => {
     try {
       const matId = resolvedValue?.material?.id || null;
       const lvl = resolvedValue?.level || null;
-      const studentName = (auth?.userName || '').toLowerCase();
-      if (studentName) {
-        // Fire-and-forget persistence
-        updateStudentData(studentName, { current_material_id: matId, current_level: lvl }).catch(e => console.warn('Persist selection failed', e));
+      const studentIdOrName = auth?.session?.user?.id || (auth?.userName || '').toLowerCase();
+      if (studentIdOrName) {
+        // Fire-and-forget persistence; updateStudentData accepts an id or username
+        updateStudentData(studentIdOrName, { current_material_id: matId, current_level: lvl }).catch(e => console.warn('Persist selection failed', e));
+      } else {
+        // No authenticated identifier yet; skip persistence silently
       }
     } catch (e) {
       console.warn('setSelectionWrapped persistence error', e);
@@ -125,6 +142,7 @@ export const UserProvider = ({ children }) => {
     // Streak and activity
     streakState,
     setStreakState,
+    recordActivity,
     
     // Current selection
     selection,

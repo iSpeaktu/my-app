@@ -140,7 +140,7 @@ export const getAllStudents = async () => {
     if (error) throw error;
     // Prefer a human-friendly display name when available
     return (students || []).map(s => {
-      const display = s.display_name || s.displayName || s.name || (s.email ? s.email.split('@')[0] : '');
+      const display = s.full_name || s.username || (s.email ? s.email.split('@')[0] : '');
       return { ...s, name: display };
     });
   } catch (error) {
@@ -155,11 +155,11 @@ export const updateStudentData = async (studentName, updates) => {
     if (!studentName) throw new Error('studentName required');
     const normalized = (studentName || '').toLowerCase();
 
-    // Try to resolve profile -> id by username or full_name or display_name
+    // Try to resolve profile -> id by username or full_name
     const { data: profileMatch, error: profileErr } = await supabase
       .from('profiles')
       .select('id')
-      .or(`username.eq.${normalized},full_name.eq.${normalized},display_name.eq.${normalized}`)
+      .or(`username.eq.${normalized},full_name.eq.${normalized}`)
       .maybeSingle();
     if (profileErr) throw profileErr;
 
@@ -437,6 +437,17 @@ export const getStudentHistoryForTeacher = async (studentId) => {
 export const getTeacherNameByUserId = async (teacherUserId) => {
   try {
     if (!teacherUserId) return null;
+    // Prefer the canonical name stored on profiles.full_name; fall back to teachers.display_name
+    const { data: profile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', teacherUserId)
+      .maybeSingle();
+    if (profileErr) throw profileErr;
+    if (profile?.full_name) {
+      return profile.full_name;
+    }
+
     const { data, error } = await supabase
       .from('teachers')
       .select('display_name')

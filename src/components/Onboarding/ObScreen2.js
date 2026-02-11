@@ -4,6 +4,7 @@ import Icon from '../common/Icon';
 import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
 import { MATERIALS_DATA } from '../../constants/materials';
+import { useMaterials } from '../../hooks/useMaterials';
 
 /**
  * Onboarding Screen 2 - Material/Track selection
@@ -14,10 +15,12 @@ export default function ObScreen2() {
   const user = useUserContext();
   const { setView } = auth;
   const { onboardingData, setOnboardingData } = user;
+  const { materials: dbMaterials } = useMaterials();
+  const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
   return (
   <div className="max-w-md mx-auto py-10 px-8 animate-in slide-in-from-right-10">
     <h2 className="text-2xl font-bold mb-10 text-center">What do you study?</h2>
-    {MATERIALS_DATA.map(m => (
+    {materials.map(m => (
       <button
         key={m.id}
         onClick={() => {

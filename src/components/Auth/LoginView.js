@@ -151,16 +151,22 @@ export default function LoginView() {
                   console.error('Invite assign failed:', e);
                 }
               }
-              const { material, level, hasStudent, hasProfile } = await loadStudentData(
+              const { material, level, hasStudent, hasProfile, teacherName, hasAssignedTeacher } = await loadStudentData(
                 authUser,
                 auth.userName,
                 auth.setUserName,
                 auth.displayName,
                 auth.setDisplayName
               );
+              // Populate assigned teacher into AuthContext so Settings/Progress can show it
+              try { auth.setStudentTeacherName(teacherName || ''); } catch (e) {}
+              try { auth.setHasAssignedTeacher(typeof hasAssignedTeacher === 'boolean' ? hasAssignedTeacher : !!teacherName); } catch (e) {}
               // Restore selection into UserContext so UI reflects persisted track/level
               try {
-                user.setSelection({ material, level, lessonNumber: null });
+                // Only restore selection when a material or level was returned
+                if (material || level) {
+                  user.setSelection({ material, level, lessonNumber: null });
+                }
               } catch (e) {
                 // non-fatal
               }

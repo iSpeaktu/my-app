@@ -5,6 +5,7 @@ import { supabase, updateStudentData } from '../../config/supabase';
 import { usePersistentAuth } from '../../hooks/useAuth';
 import Header from '../common/Header';
 import { MATERIALS_DATA } from '../../constants/materials';
+import { useMaterials } from '../../hooks/useMaterials';
 
 export default function SettingsView() {
   const auth = useAuthContext();
@@ -13,7 +14,9 @@ export default function SettingsView() {
   const [name, setName] = useState(auth.displayName || auth.userName || '');
   const [lessonsPerWeek, setLessonsPerWeek] = useState(user.onboardingData?.lessonsPerWeek || 3);
   const [selectedMaterialId, setSelectedMaterialId] = useState(user.onboardingData?.material?.id || (MATERIALS_DATA[0] && MATERIALS_DATA[0].id));
-  const materialSpec = MATERIALS_DATA.find(m => m.id === selectedMaterialId) || MATERIALS_DATA[0];
+  const { materials: dbMaterials } = useMaterials();
+  const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
+  const materialSpec = materials.find(m => m.id === selectedMaterialId) || materials[0];
   const [selectedLevel, setSelectedLevel] = useState(user.onboardingData?.level || (materialSpec?.levels?.[0]));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -68,8 +71,8 @@ export default function SettingsView() {
   const handleReset = () => {
     setName(auth.displayName || auth.userName || '');
     setLessonsPerWeek(user.onboardingData?.lessonsPerWeek || 3);
-    setSelectedMaterialId(user.onboardingData?.material?.id || (MATERIALS_DATA[0] && MATERIALS_DATA[0].id));
-    setSelectedLevel(user.onboardingData?.level || (MATERIALS_DATA[0]?.levels?.[0]));
+    setSelectedMaterialId(user.onboardingData?.material?.id || (materials[0] && materials[0].id));
+    setSelectedLevel(user.onboardingData?.level || (materials[0]?.levels?.[0]));
     setMessage('');
   };
 
@@ -82,7 +85,7 @@ export default function SettingsView() {
 
   const handleLessonsChange = async (val) => {
     setLessonsPerWeek(val);
-    const updated = { ...(user.onboardingData || {}), lessonsPerWeek: val, material: MATERIALS_DATA.find(m => m.id === selectedMaterialId) || null, level: selectedLevel };
+    const updated = { ...(user.onboardingData || {}), lessonsPerWeek: val, material: materials.find(m => m.id === selectedMaterialId) || null, level: selectedLevel };
     if (typeof user.setOnboardingData === 'function') user.setOnboardingData(updated);
     await callPersist({ onboardingData: updated });
   };
@@ -96,7 +99,7 @@ export default function SettingsView() {
   };
 
   const handleSelectLevel = async (l) => {
-    const updated = { ...(user.onboardingData || {}), material: MATERIALS_DATA.find(m => m.id === selectedMaterialId) || null, level: l, lessonsPerWeek };
+    const updated = { ...(user.onboardingData || {}), material: materials.find(m => m.id === selectedMaterialId) || null, level: l, lessonsPerWeek };
     setSelectedLevel(l);
     if (typeof user.setOnboardingData === 'function') user.setOnboardingData(updated);
     await callPersist({ onboardingData: updated });
@@ -111,6 +114,12 @@ export default function SettingsView() {
         <div className="space-y-4">
           <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 px-2">Profile Information</h4>
           <div className="bg-[#16161D] border border-[#2D2D3A] rounded-3xl p-6 space-y-4">
+            {auth.hasAssignedTeacher !== false ? (
+              <div className="mb-2 text-sm text-white/70">
+                <div className="text-[9px] font-black uppercase tracking-widest text-white/40">Assigned Teacher</div>
+                <div className="font-bold">{auth.studentTeacherName || 'Loading...'}</div>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <label className="text-[9px] font-black uppercase tracking-widest text-white/40 ml-2">Name</label>
               <div className="relative group">
@@ -153,7 +162,7 @@ export default function SettingsView() {
             <div className="space-y-3">
               <label className="text-[9px] font-black uppercase tracking-widest text-white/40 ml-2 block">Track</label>
               <div className="grid grid-cols-1 gap-2">
-                {MATERIALS_DATA.map(m => (
+                {materials.map(m => (
                   <button
                     key={m.id}
                     onClick={() => handleSelectTrack(m)}
@@ -171,7 +180,7 @@ export default function SettingsView() {
             <div className="space-y-3 pt-4 border-t border-[#2D2D3A]">
               <label className="text-[9px] font-black uppercase tracking-widest text-white/40 ml-2 block">Current Level</label>
               <div className="flex flex-wrap gap-2">
-                {(MATERIALS_DATA.find(m => m.id === selectedMaterialId)?.levels || []).map(l => (
+                {(materials.find(m => m.id === selectedMaterialId)?.levels || []).map(l => (
                   <button
                     key={l}
                     onClick={() => handleSelectLevel(l)}

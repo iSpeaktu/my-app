@@ -204,20 +204,24 @@ export const useStudentData = (view, selection) => {
     }
 
     // --- LOAD TEACHER INFO IF ASSIGNED ---
+    let teacherNameLocal = null;
+    let hasAssignedTeacherLocal = false;
     if (student?.teacher_id) {
+      hasAssignedTeacherLocal = true;
       setHasAssignedTeacher(true);
-      const teacherName = await getTeacherNameByUserId(student.teacher_id);
-      if (teacherName) setStudentTeacherName(teacherName);
+      teacherNameLocal = await getTeacherNameByUserId(student.teacher_id);
+      if (teacherNameLocal) setStudentTeacherName(teacherNameLocal);
       // Clear invite token if teacher already assigned
       if (getStoredInviteToken()) {
         clearInviteToken();
         clearStoredInviteToken();
       }
     } else {
+      hasAssignedTeacherLocal = false;
       setHasAssignedTeacher(false);
     }
 
-    return { material, level, hasStudent, hasProfile };
+    return { material, level, hasStudent, hasProfile, teacherName: teacherNameLocal, hasAssignedTeacher: hasAssignedTeacherLocal, lessonsPerWeek: nextOnboarding.lessonsPerWeek, streakState: { weeklyStreak, weeklyActivityCount, lastResetDate: currentWeekStart.toISOString(), completedHistory }, notifications: notifications || [], achievements: achievements || [] };
   };
 
   return {

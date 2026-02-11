@@ -1,6 +1,7 @@
 // Extracted from App.js - ResultsView component (original lines 804-851)
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Trophy, AlertTriangle } from 'lucide-react';
+import { useUserContext } from '../../context/UserContext';
 
 /**
  * QuizResultsView - Quiz completion results screen
@@ -12,9 +13,25 @@ import { Trophy, AlertTriangle } from 'lucide-react';
  * @param {Function} setView - State setter to navigate back to dashboard
  */
 export default function QuizResultsView({ quizState, setView }) {
+  const user = useUserContext();
   const percentage = Math.round((quizState.score / quizState.history.length) * 100);
   const passed = percentage >= 70;
   const missed = quizState.history.filter(h => h.selected !== h.correct);
+
+  // Record quiz activity (record to DB) when results view is displayed
+  useEffect(() => {
+    const recordQuizCompletion = async () => {
+      try {
+        if (user?.recordActivity && quizState?.history?.length > 0) {
+          const failures = missed.map(m => m.question);
+          await user.recordActivity(passed, percentage, failures);
+        }
+      } catch (err) {
+        console.error('Failed to record quiz completion:', err);
+      }
+    };
+    recordQuizCompletion();
+  }, []); // Only run once on mount
 
   return (
     <div className="max-w-xl mx-auto py-12 px-6 animate-in zoom-in-95">

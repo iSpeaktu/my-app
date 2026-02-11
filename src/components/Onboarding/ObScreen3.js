@@ -2,6 +2,7 @@
 import React from 'react';
 import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
+import { updateStudentData } from '../../config/supabase';
 
 /**
  * Onboarding Screen 3 - Level selection
@@ -18,9 +19,24 @@ export default function ObScreen3() {
     {onboardingData.material?.levels.map(l => (
       <button
         key={l}
-        onClick={() => {
+        onClick={async () => {
           const finalOb = { ...onboardingData, level: l };
           setOnboardingData(finalOb);
+          // Persist final onboarding selections to students table
+          try {
+            const userId = auth?.session?.user?.id || null;
+            if (userId) {
+              await updateStudentData(userId, {
+                current_material_id: finalOb.material?.id || null,
+                current_level: finalOb.level || null,
+                lessons_per_week: finalOb.lessonsPerWeek || null
+              });
+            }
+          } catch (err) {
+            // non-fatal: log and continue to dashboard
+            // eslint-disable-next-line no-console
+            console.error('Failed to persist onboarding data', err);
+          }
           setView('dashboard');
         }}
         aria-label={`Select ${l} as your level`}

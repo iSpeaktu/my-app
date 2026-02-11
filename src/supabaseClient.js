@@ -139,7 +139,7 @@ export const getAllStudents = async () => {
     if (error) throw error;
     // Prefer a human-friendly display name when available
     return (students || []).map(s => {
-      const display = s.display_name || s.displayName || s.name || (s.email ? s.email.split('@')[0] : '');
+      const display = s.full_name || s.username || (s.email ? s.email.split('@')[0] : '');
       return { ...s, name: display };
     });
   } catch (error) {
@@ -152,13 +152,33 @@ export const getAllStudents = async () => {
 export const updateStudentData = async (studentName, updates) => {
   try {
     const normalized = (studentName || '').toLowerCase();
+    // Resolve profile id by username or full_name
+    const { data: profileMatch, error: profileErr } = await supabase
+      .from('profiles')
+      .select('id')
+      .or(`username.eq.${normalized},full_name.eq.${normalized}`)
+      .maybeSingle();
+    if (profileErr) throw profileErr;
+    const userId = profileMatch?.id || null;
+    if (!userId) {
+      const maybeId = studentName;
+      const isUuid = typeof maybeId === 'string' && /^[0-9a-fA-F-]{36}$/.test(maybeId);
+      if (!isUuid) throw new Error('Could not resolve student id for update');
+      const { data, error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', maybeId)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    }
     const { data, error } = await supabase
       .from('students')
       .update(updates)
-      .or(`name.eq.${normalized},display_name.eq.${normalized}`)
+      .eq('id', userId)
       .select()
       .maybeSingle();
-
     if (error) throw error;
     return data;
   } catch (error) {
@@ -409,6 +429,17 @@ export const getStudentHistoryForTeacher = async (studentId) => {
 export const getTeacherNameByUserId = async (teacherUserId) => {
   try {
     if (!teacherUserId) return null;
+    // Prefer canonical name on profiles.full_name; fall back to teachers.display_name
+    const { data: profile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', teacherUserId)
+      .maybeSingle();
+    if (profileErr) throw profileErr;
+    if (profile?.full_name) {
+      return profile.full_name;
+    }
+
     const { data, error } = await supabase
       .from('teachers')
       .select('display_name')

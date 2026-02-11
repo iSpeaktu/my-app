@@ -15,7 +15,7 @@ import {
   Book,
   X
 } from 'lucide-react';
-import { Header, Icon } from '../common';
+import { Header, Icon, Card } from '../common';
 import ProgressCard from './ProgressCard';
 import { supabase, getTeacherNameByUserId, upsertAchievement } from '../../config/supabase';
 
@@ -44,8 +44,8 @@ export default function ProgressView({
 
   const streakState = propsStreakState || user.streakState || { completedHistory: [], weeklyActivityCount: 0 };
   const onboardingData = propsOnboardingData || user.onboardingData || { lessonsPerWeek: 3 };
-  const studentTeacherName = propsStudentTeacherName || user.studentTeacherName || '';
-  const setStudentTeacherName = propsSetStudentTeacherName || user.setStudentTeacherName || (() => {});
+  const studentTeacherName = propsStudentTeacherName || auth.studentTeacherName || '';
+  const setStudentTeacherName = propsSetStudentTeacherName || auth.setStudentTeacherName || (() => {});
   const studentAchievements = propsStudentAchievements || user.studentAchievements || [];
   const setStudentAchievements = propsSetStudentAchievements || user.setStudentAchievements || (() => {});
   const [showMastered, setShowMastered] = useState(true);
@@ -152,6 +152,23 @@ export default function ProgressView({
         <div className="mb-6 p-4 bg-[#00F2FF10] border border-[#00F2FF40] rounded-2xl text-white">
           <div className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-1">Your Teacher</div>
           <div className="text-sm font-bold">{studentTeacherName}</div>
+        </div>
+      )}
+
+      {onboardingData?.material && (
+        <div className="mb-6">
+          <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-3">Your Current Track</h4>
+          <Card className="border-[#00F2FF40] bg-[#00F2FF05]">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
+                <Icon name={onboardingData.material?.icon} style={{ color: onboardingData.material?.color }} />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-lg text-white">{onboardingData.material?.title || "Language Track"}</h3>
+                <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData.level}</p>
+              </div>
+            </div>
+          </Card>
         </div>
       )}
 
