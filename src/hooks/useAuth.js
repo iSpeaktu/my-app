@@ -51,10 +51,16 @@ export const useAuth = (onSessionRestored = () => {}) => {
 
     init();
 
-    const { subscription } = supabase.auth.onAuthStateChange((_event, payload) => {
+    const { subscription } = supabase.auth.onAuthStateChange((event, payload) => {
       const newSession = payload?.session || null;
       const newUser = newSession?.user || null;
       if (!mounted) return;
+      // Ignore transient null sessions from non-explicit events. Only treat
+      // a null session as a sign-out when Supabase reports the explicit
+      // 'SIGNED_OUT' or 'USER_DELETED' events to avoid UI flicker.
+      if (newSession === null && event !== 'SIGNED_OUT' && event !== 'USER_DELETED') {
+        return;
+      }
       setSession(newSession);
       setUserRole(newUser?.user_metadata?.role || null);
       if (!newSession) {

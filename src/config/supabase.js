@@ -152,14 +152,41 @@ export const getAllStudents = async () => {
 // --- UPDATE STUDENT DATA ---
 export const updateStudentData = async (studentName, updates) => {
   try {
+    if (!studentName) throw new Error('studentName required');
     const normalized = (studentName || '').toLowerCase();
+
+    // Try to resolve profile -> id by username or full_name or display_name
+    const { data: profileMatch, error: profileErr } = await supabase
+      .from('profiles')
+      .select('id')
+      .or(`username.eq.${normalized},full_name.eq.${normalized},display_name.eq.${normalized}`)
+      .maybeSingle();
+    if (profileErr) throw profileErr;
+
+    const userId = profileMatch?.id || null;
+    if (!userId) {
+      // If studentName looks like a UUID, attempt to update by id directly
+      const maybeId = studentName;
+      const isUuid = typeof maybeId === 'string' && /^[0-9a-fA-F-]{36}$/.test(maybeId);
+      if (!isUuid) {
+        throw new Error('Could not resolve student id for update');
+      }
+      const { data, error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', maybeId)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    }
+
     const { data, error } = await supabase
       .from('students')
       .update(updates)
-      .or(`name.eq.${normalized},display_name.eq.${normalized}`)
+      .eq('id', userId)
       .select()
       .maybeSingle();
-
     if (error) throw error;
     return data;
   } catch (error) {

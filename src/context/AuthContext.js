@@ -57,15 +57,13 @@ export const AuthProvider = ({ children }) => {
       // from a valid session to null (i.e. an actual sign-out). This avoids
       // transient null values from the auth subscription temporarily
       // overwriting the user's current view.
-      if (prev != null) {
-        // Debounce the forced switch to login for a short window. If a new
-        // session appears within that window we assume the null was transient
-        // and avoid flickering the UI.
-        if (signOutTimerRef.current) clearTimeout(signOutTimerRef.current);
+      // Use a longer debounce and ensure we only start one timer so
+      // rapid subscription flaps don't flip the UI.
+      if (prevSessionRef.current != null && !signOutTimerRef.current) {
         signOutTimerRef.current = setTimeout(() => {
           _setView('login');
           signOutTimerRef.current = null;
-        }, 350);
+        }, 1500);
       }
     }
     prevSessionRef.current = auth.session;
