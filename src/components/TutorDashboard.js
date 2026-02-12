@@ -493,7 +493,10 @@ export default function TutorDashboard({ onLogout }) {
               </div>
           ) : filteredStudents.map(s => {
               const needsRetake = s.lastScore < 70;
-              const quizCount = (s.history && s.history.length) ? s.history.length : 0;
+              // Count unique lessons taken (do not double-count retakes)
+              const quizCount = s.history && s.history.length
+                ? new Set((s.history || []).map(h => h.lessonId).filter(id => typeof id !== 'undefined' && id !== null)).size
+                : 0;
               const lastHistory = (s.history && s.history.length)
                 ? s.history.slice().sort((a, b) => new Date(a.date) - new Date(b.date))[s.history.length - 1]
                 : null;
@@ -558,9 +561,19 @@ export default function TutorDashboard({ onLogout }) {
                           <div className="text-[9px] font-black uppercase tracking-widest text-white/40">{quizCount} Quiz{quizCount === 1 ? '' : 'zes'} Taken</div>
                           {(() => {
                               const lastSeen = lastSeenMap[s.id];
-                              const newQuizCount = lastSeen
-                                ? (s.history || []).filter(h => new Date(h.date) > new Date(lastSeen)).length
-                                : 0;
+                              // Count only lessons whose first-ever attempt occurred after lastSeen (ignore retakes)
+                              const newQuizCount = (() => {
+                                if (!lastSeen) return 0;
+                                const lastSeenDate = new Date(lastSeen);
+                                const firstSeenByLesson = {};
+                                (s.history || []).forEach(h => {
+                                  const lid = h.lessonId;
+                                  if (typeof lid === 'undefined' || lid === null) return;
+                                  const d = new Date(h.date);
+                                  if (!firstSeenByLesson[lid] || d < firstSeenByLesson[lid]) firstSeenByLesson[lid] = d;
+                                });
+                                return Object.values(firstSeenByLesson).filter(d => d > lastSeenDate).length;
+                              })();
                               if (newQuizCount <= 0) return null;
                               if (feedbackSentForLast) return null;
                               return (

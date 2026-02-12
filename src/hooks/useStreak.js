@@ -84,8 +84,26 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
 
     setStreakState(newState);
 
-    // Compute XP: 10 points per passed lesson
-    const computedXp = updatedHistory.filter(h => h.passed).length * 10;
+    // Compute XP based on best result per lesson:
+    // - 25 XP for a perfect (100%)
+    // - 10 XP for a pass (70-99%)
+    // Ensure retakes don't double-count: use the best score per lesson
+    const bestScoreByLesson = {};
+    (updatedHistory || []).forEach(h => {
+      const lid = h.lessonId;
+      if (typeof lid === 'undefined' || lid === null) return;
+      const s = typeof h.score === 'number' ? h.score : -1;
+      if (typeof bestScoreByLesson[lid] === 'undefined' || s > bestScoreByLesson[lid]) bestScoreByLesson[lid] = s;
+    });
+    let computedXp = 0;
+    Object.values(bestScoreByLesson).forEach(score => {
+      if (score === 100) computedXp += 25;
+      else if (score >= 70) computedXp += 10;
+    });
+
+    // Perfect streak tracking: increment when current attempt is perfect, reset otherwise
+    const prevPerfectStreak = typeof streakState.perfectStreak === 'number' ? streakState.perfectStreak : 0;
+    const perfectStreak = (typeof scorePercent === 'number' && scorePercent === 100) ? (prevPerfectStreak + 1) : 0;
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -97,6 +115,7 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
         await updateStudentProgress(userId, {
           xp: computedXp,
           weekly_streak: weeklyStreak,
+          perfect_streak: perfectStreak,
           current_lesson_track_id: selection.material?.id || null,
           current_level: selection.level || null,
           last_activity_date: passed ? now.toISOString() : undefined
@@ -105,8 +124,11 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
           // Re-fetch student progress from DB to ensure the weekly streak was persisted
           try {
             const studentRow = await getStudentProgress(userId);
-            if (studentRow && typeof studentRow.weekly_streak === 'number') {
-              setStreakState(prev => ({ ...prev, weeklyStreak: studentRow.weekly_streak }));
+            if (studentRow) {
+              const next = {};
+              if (typeof studentRow.weekly_streak === 'number') next.weeklyStreak = studentRow.weekly_streak;
+              if (typeof studentRow.perfect_streak === 'number') next.perfectStreak = studentRow.perfect_streak;
+              if (Object.keys(next).length) setStreakState(prev => ({ ...prev, ...next }));
             }
           } catch (err) {
             console.error('Failed to re-fetch student progress after update:', err);

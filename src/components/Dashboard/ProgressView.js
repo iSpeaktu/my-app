@@ -163,7 +163,7 @@ export default function ProgressView({
 
   return (
     <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
-      <Header title="View Progress" subtitle="Tracking your mastery" />
+      <Header title="View Progress" subtitle="Tracking your mastery" showStreak streakState={streakState} />
 
       {studentTeacherName && (
         <div className="mb-6 p-4 bg-[#00F2FF10] border border-[#00F2FF40] rounded-2xl text-white">

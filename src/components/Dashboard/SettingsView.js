@@ -130,7 +130,7 @@ export default function SettingsView() {
 
   return (
     <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
-      <Header title="Settings" subtitle="Your Account & Goals" />
+      <Header title="Settings" subtitle="Your Account & Goals" showStreak streakState={user.streakState} />
 
       <div className="space-y-8">
         {/* Profile */}

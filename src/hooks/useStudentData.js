@@ -178,11 +178,17 @@ export const useStudentData = (view, selection) => {
     const prevWeekMet = prevWeekHistory.length >= target;
     const weeklyStreak = isSameWeek ? storedStreak : (prevWeekMet ? storedStreak : 0);
 
+    // Include persisted XP and perfect streak if available on the student row
+    const xpFromStudent = typeof student?.xp === 'number' ? student.xp : 0;
+    const perfectFromStudent = typeof student?.perfect_streak === 'number' ? student.perfect_streak : 0;
+
     setStreakState({
       weeklyStreak,
       weeklyActivityCount,
       lastResetDate: currentWeekStart.toISOString(),
-      completedHistory
+      completedHistory,
+      xp: xpFromStudent,
+      perfectStreak: perfectFromStudent
     });
 
     // --- SYNC WEEKLY STREAK TO DATABASE IF CHANGED ---
@@ -226,7 +232,7 @@ export const useStudentData = (view, selection) => {
       setHasAssignedTeacher(false);
     }
 
-    return { material, level, hasStudent, hasProfile, teacherName: teacherNameLocal, hasAssignedTeacher: hasAssignedTeacherLocal, lessonsPerWeek: nextOnboarding.lessonsPerWeek, streakState: { weeklyStreak, weeklyActivityCount, lastResetDate: currentWeekStart.toISOString(), completedHistory }, notifications: notifications || [], achievements: achievements || [] };
+    return { material, level, hasStudent, hasProfile, teacherName: teacherNameLocal, hasAssignedTeacher: hasAssignedTeacherLocal, lessonsPerWeek: nextOnboarding.lessonsPerWeek, streakState: { weeklyStreak, weeklyActivityCount, lastResetDate: currentWeekStart.toISOString(), completedHistory, xp: xpFromStudent, perfectStreak: perfectFromStudent }, notifications: notifications || [], achievements: achievements || [] };
   };
 
   return {

@@ -43,13 +43,13 @@ export default function SelectLessonView(props) {
   const maxCompleted = historyForMaterialLevel.filter(h => h.passed).reduce((max, h) => Math.max(max, h.lessonId), 0);
 
 
-  const handleClick = (num, isFuture, isCurrent, e) => {
+  const handleClick = (num, isFuture, isCurrent, e, passed = false) => {
     // If locked future lesson, ignore clicks
     if (isFuture && !isCurrent) return;
     // Prevent outer click handlers from immediately closing the mini-card
     try { e.stopPropagation(); } catch (err) {}
     // Show start mini-card inside the button container
-    setActiveLessonData({ lessonNumber: num, title: materialSpec?.title || selection.material?.title || 'Lesson', isCurrent });
+    setActiveLessonData({ lessonNumber: num, title: materialSpec?.title || selection.material?.title || 'Lesson', isCurrent, isPassed: !!passed });
     setShowStartCard(true);
   };
 
@@ -68,7 +68,7 @@ export default function SelectLessonView(props) {
 
   return (
     <div className="max-w-md mx-auto py-8 px-6 min-h-screen">
-      <Header title="Learning Path" subtitle={`${selection.material?.title} • ${selection.level}`} showBack onBack={() => setView('dashboard')} />
+      <Header title="Learning Path" subtitle={`${selection.material?.title} • ${selection.level}`} showBack onBack={() => setView('dashboard')} showStreak streakState={streakState} />
 
       <div onClick={() => { setShowStartCard(false); setActiveLessonData(null); }} className="relative flex flex-col items-center pb-40 space-y-24">
         {/* Central Vertical Line */}
@@ -137,7 +137,7 @@ export default function SelectLessonView(props) {
 
                 {/* Lesson Button (Node) */}
                 <button
-                  onClick={(e) => handleClick(num, isFuture, isCurrent, e)}
+                  onClick={(e) => handleClick(num, isFuture, isCurrent, e, isPassed)}
                   onMouseDown={() => setPressedLesson(num)}
                   onMouseUp={() => setPressedLesson(null)}
                   onMouseLeave={() => setPressedLesson(null)}
@@ -156,14 +156,15 @@ export default function SelectLessonView(props) {
                 {/* Mini Pop Card (positioned inside button container) */}
                 {showStartCard && activeLessonData?.lessonNumber === num && (
                   (() => {
+                    // Prefer activeLessonData.isPassed when the card is open, otherwise fall back to loop's isPassed
+                    const cardPassed = (activeLessonData?.lessonNumber === num) ? !!activeLessonData?.isPassed : isPassed;
                     // Card should reflect lesson status: cyan only for current, slate for passed
-                    const cardBg = isCurrent ? '#008f9f' : (isPassed ? '#1f2937' : '#1C1C26');
+                    const cardBg = isCurrent ? '#008f9f' : (cardPassed ? '#1f2937' : '#1C1C26');
                     const cardBorder = isCurrent ? '#00F2FF' : '#2D2D3A';
                     const cardBoxShadow = isCurrent ? '0 20px 40px rgba(0,242,255,0.14)' : '0 10px 20px rgba(0,0,0,0.4)';
                     const triangleColor = cardBg;
-                    const btnIsPassed = isPassed;
-                    const insideBtnLabel = btnIsPassed ? 'REVIEW' : 'START';
-                    const insideBtnClass = btnIsPassed ? 'w-full py-1 rounded-md bg-[#004e57] text-white font-bold flex flex-row items-center justify-center gap-2 active:translate-y-1' : 'w-full py-1 rounded-md bg-white text-[#008f9f] font-bold flex flex-row items-center justify-center gap-2 active:translate-y-1';
+                    const insideBtnLabel = cardPassed ? 'REVIEW' : 'START';
+                    const insideBtnClass = cardPassed ? 'w-full py-1 rounded-md bg-[#004e57] text-white font-bold flex flex-row items-center justify-center gap-2 active:translate-y-1' : 'w-full py-1 rounded-md bg-white text-[#008f9f] font-bold flex flex-row items-center justify-center gap-2 active:translate-y-1';
 
                     return (
                       <div onClick={(e) => e.stopPropagation()} className="absolute w-40 p-2 rounded-xl text-xs" style={{ left: '50%', transform: 'translateX(-50%)', bottom: 'calc(100% + 12px)', background: cardBg, border: `1.5px solid ${cardBorder}`, boxShadow: cardBoxShadow, position: 'absolute' }}>
