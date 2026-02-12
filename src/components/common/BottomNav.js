@@ -1,6 +1,7 @@
 // Extracted from App.js - BottomNav component (original lines 1138-1152)
 import React from 'react';
 import Icon from './Icon';
+import { useAuthContext } from '../../context/AuthContext';
 
 /**
  * Bottom navigation bar for main app views
@@ -8,7 +9,9 @@ import Icon from './Icon';
  * @param {Function} setView - Function to change view
  */
 export default function BottomNav({ view, setView }) {
-  console.log('BottomNav rendered with view=', view, 'setView=', setView);
+  const auth = useAuthContext();
+  // Hide bottom navigation entirely for teachers (tutor dashboard)
+  if (auth?.userRole === 'teacher') return null;
   return (
   <div className="fixed bottom-0 w-full bg-[#0A0A0C]/90 backdrop-blur-xl border-t border-[#2D2D3A] flex justify-around py-5 z-20">
     {[

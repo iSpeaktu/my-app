@@ -50,7 +50,12 @@ export const useStudentData = (view, selection) => {
 
   useEffect(() => {
     const SELECTION_STORAGE_KEY = 'ispeaktu_last_selection';
-    localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(selection || {}));
+    // Only persist when a selection value is explicitly provided to this hook.
+    // When the hook is used without a `selection` argument (undefined),
+    // avoid clobbering an existing stored selection (e.g. during app init).
+    if (typeof selection !== 'undefined') {
+      localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(selection || {}));
+    }
   }, [selection]);
 
   // --- REHYDRATE ONBOARDING DATA (original lines 256-262) ---

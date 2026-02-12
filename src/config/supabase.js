@@ -378,7 +378,7 @@ export const getTeacherRoster = async () => {
 
     const { data: historyRows, error: historyErr } = await supabase
       .from('lesson_history')
-      .select('student_id, lesson_id, score, passed, failures, created_at, material_id, level')
+      .select('student_id, lesson_id, score, passed, failures, created_at, lesson_track_id, level')
       .in('student_id', studentIds)
       .order('created_at', { ascending: true });
     if (historyErr) throw historyErr;
@@ -394,7 +394,7 @@ export const getTeacherRoster = async () => {
         score: h.score,
         passed: h.passed,
         failures: h.failures || [],
-        materialId: h.material_id || null,
+        materialId: h.lesson_track_id || null,
         level: h.level || null
       });
     });

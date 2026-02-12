@@ -48,44 +48,56 @@ export const useLessonContent = (selection) => {
           lesson_number: selection.lessonNumber || null
         });
 
-        // --- FETCH LESSON WITH NESTED QUESTIONS AND CHOICES ---
-        const { data: lessonRow, error: lessonErr } = await supabase
+        // New fetcher: resolve lesson id then fetch lesson_questions + choices
+        let lessonRow = null;
+        let questions = [];
+
+        // First find the lesson id for the current selection
+        const { data: lessonRowRaw, error: lessonErr } = await supabase
           .from('lessons')
-          .select('id, title, lesson_questions (id, question_text, explanation, sort_order, lesson_choices (id, choice_text, is_correct, sort_order))')
+          .select('id, title')
           .eq('track_id', selection.material.id)
           .eq('level', selection.level)
           .eq('lesson_number', selection.lessonNumber)
           .maybeSingle();
 
         if (lessonErr) throw lessonErr;
+        if (!lessonRowRaw || !lessonRowRaw.id) {
+          // No lesson found — leave questions empty
+          lessonRow = lessonRowRaw || { id: null, title: '' };
+          questions = [];
+        } else {
+          lessonRow = lessonRowRaw;
+          const lessonId = lessonRow.id;
 
-        // --- TRANSFORM QUESTIONS: SORT AND MAP TO QUIZ FORMAT ---
-        const questions = (lessonRow?.lesson_questions || [])
-          .slice()
-          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-          .map(q => {
-            // Sort choices by sort_order and find correct answer index
-            const choices = (q.lesson_choices || [])
-              .slice()
-              .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-            const answerIndex = choices.findIndex(c => c.is_correct);
+          const { data: qrows, error: qerr } = await supabase
+            .from('lesson_questions')
+            .select('*, lesson_choices (*)')
+            .eq('lesson_id', lessonId);
+          if (qerr) throw qerr;
+
+          questions = (qrows || []).map(q => {
+            const correct = (q.lesson_choices || []).find(c => c.is_correct);
+            const wrongs = (q.lesson_choices || []).filter(c => !c.is_correct);
+
+            const limitedChoices = [
+              correct,
+              ...wrongs.sort(() => 0.5 - Math.random()).slice(0, 2)
+            ].sort(() => 0.5 - Math.random());
 
             return {
               question: q.question_text,
-              options: choices.map(c => c.choice_text),
-              answer: answerIndex >= 0 ? answerIndex : 0,
-              feedback: q.explanation || ''
+              options: limitedChoices.map(c => c.choice_text),
+              answer: limitedChoices.findIndex(c => c.is_correct),
+              feedback: q.explanation
             };
-          })
-          // Filter out invalid questions (missing text or options)
-          .filter(q => q.question && q.options && q.options.length > 0);
+          }).filter(q => q.question && q.options && q.options.length === 3);
+        }
 
         console.info('[useLessonContent] db result', {
           lesson_id: lessonRow?.id || null,
           lesson_title: lessonRow?.title || '',
-          raw_question_count: (lessonRow?.lesson_questions || []).length,
           usable_question_count: questions.length,
-          choice_count_per_question: (lessonRow?.lesson_questions || []).map(q => (q.lesson_choices || []).length)
         });
 
         // --- SET CONTENT IF VALID QUESTIONS EXIST ---

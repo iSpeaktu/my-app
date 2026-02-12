@@ -26,10 +26,12 @@ import { supabase, deleteNotification, getNotifications } from '../../config/sup
  */
 import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
+import { getStoredSelection } from '../../utils/storage';
 
 export default function StudentDashboard() {
   const auth = useAuthContext();
   const user = useUserContext();
+  const hasInitializedOnboarding = user.hasInitializedOnboarding;
 
   const displayName = auth.displayName || auth.userName;
   const userName = auth.userName;
@@ -56,6 +58,11 @@ export default function StudentDashboard() {
     return m;
   };
   const currentMaterial = resolveMaterial(onboardingData?.material);
+  // Speed up initial render by checking localStorage for the last selection
+  const storedSelection = getStoredSelection();
+  const storedMaterial = resolveMaterial(storedSelection?.material);
+  // Prefer the restored onboarding material, fall back to stored local selection
+  const displayMaterial = currentMaterial || storedMaterial || null;
 
   const handleLogout = async () => {
     try {
@@ -91,6 +98,17 @@ export default function StudentDashboard() {
         console.error('Failed to dismiss praise:', err);
       }
   };
+
+  if (!hasInitializedOnboarding) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-black">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-20 h-20 rounded-full border-4 border-[#00F2FF] animate-spin" style={{ boxShadow: '0 0 30px rgba(0,242,255,0.35)' }} />
+          <div className="text-[#00F2FF] font-extrabold text-2xl uppercase tracking-widest animate-pulse" style={{ textShadow: '0 6px 0 #001218, 0 18px 40px rgba(0,242,255,0.16)' }}>ARE YOU READY?</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
@@ -149,18 +167,39 @@ export default function StudentDashboard() {
 
       <div className="mb-10">
           <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-4">My Current Track</h4>
-          <Card className="border-[#00F2FF40] bg-[#00F2FF05]" onClick={() => { setSelection({ material: onboardingData.material, level: onboardingData.level }); setView('select_lesson'); }}>
+          {/* If we don't yet know the current track, show a neon-cyan ready spinner to avoid flicker */}
+          {displayMaterial === null ? (
+            <div className="w-full p-8 rounded-2xl bg-black border border-[#00121a] flex flex-col items-center justify-center space-y-6" style={{ minHeight: 160 }} role="status" aria-live="polite">
+              <div className="transform-gpu animate-in fade-in">
+                <div className="text-center">
+                  <div className="font-extrabold uppercase tracking-widest leading-tight" style={{ color: '#00F2FF', fontSize: '28px', lineHeight: 1, letterSpacing: '0.18em', textShadow: '0 6px 0 #001218, 0 12px 30px rgba(0,242,255,0.18), 0 0 30px rgba(0,242,255,0.55)', WebkitFontSmoothing: 'antialiased' }}>
+                    <span style={{ display: 'block', transform: 'translateY(-6px)' }}>ARE YOU</span>
+                    <span style={{ display: 'block', transform: 'translateY(-6px)' }}>READY?</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 w-11/12 max-w-xl h-4 md:h-5 rounded-full bg-[#001017] relative overflow-hidden" style={{ boxShadow: '0 14px 60px rgba(0,242,255,0.06) inset' }}>
+                  <div style={{ width: '75%', height: '100%', background: 'linear-gradient(90deg, #00F2FF, #00C8FF, #00F2FF)', boxShadow: '0 12px 40px rgba(0,242,255,0.45)', borderRadius: 9999 }} />
+                  <div style={{ position: 'absolute', inset: 0, boxShadow: '0 0 40px rgba(0,242,255,0.12)', pointerEvents: 'none' }} />
+                </div>
+
+                <div className="mt-3 text-sm text-[#9EEFFD] opacity-80">Loading your mission...</div>
+              </div>
+            </div>
+          ) : (
+            <Card className="border-[#00F2FF40] bg-[#00F2FF05] animate-in fade-in" onClick={() => { setSelection({ material: onboardingData.material, level: onboardingData.level }); setView('select_lesson'); }}>
               <div className="flex items-center gap-5">
                     <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
-                      <Icon name={currentMaterial?.icon} style={{ color: currentMaterial?.color }} />
+                      <Icon name={displayMaterial?.icon} style={{ color: displayMaterial?.color }} />
                     </div>
                           <div className="flex-1">
-                            <h3 className="font-bold text-lg text-white">{currentMaterial?.title || "Language Track"}</h3>
+                            <h3 className="font-bold text-lg text-white">{displayMaterial?.title || "Language Track"}</h3>
                             <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData?.level || ''}</p>
                           </div>
                   <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
               </div>
-          </Card>
+            </Card>
+          )}
       </div>
 
       <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Explore Tracks</h4>

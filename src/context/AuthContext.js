@@ -61,8 +61,6 @@ export const AuthProvider = ({ children }) => {
         // reconcile with Supabase via its own getSession/onAuthStateChange.
       } catch (e) {
         // ignore
-      } finally {
-        if (mounted) setAuthLoading(false);
       }
     };
 

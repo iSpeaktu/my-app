@@ -48,6 +48,12 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
   const auth = useAuthContext();
   const user = useUserContext();
 
+  // App readiness: wait for auth to finish and, if a session exists,
+  // for user onboarding to be initialized. This stricter gate prevents
+  // briefly showing the login view while session/onboarding restore is in-flight.
+  // Consider teachers immediately ready once auth is restored; students wait for onboarding init
+  const appReady = !auth.authLoading && (!auth.session || auth.userRole === 'teacher' || user.hasInitializedOnboarding === true);
+
   // Confirm teacher invitation
   const confirmInvite = async () => {
     try {
@@ -128,7 +134,7 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0C] text-white pb-32 selection:bg-[#00F2FF] selection:text-[#0A0A0C]">
+    <div className={`min-h-screen bg-[#0A0A0C] text-white ${!(['quiz','results'].includes(auth.view)) ? 'pb-32' : ''} selection:bg-[#00F2FF] selection:text-[#0A0A0C]`}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Open+Sans:wght@400;600;800&display=swap');
         * { font-family: 'Nunito', sans-serif; }
@@ -146,31 +152,31 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
       {/* Invite modal rendering moved to end of JSX (see AppRoot) */}
 
       {/* VIEW ROUTING */}
-      {auth.authLoading && <div className="flex items-center justify-center min-h-screen"><div className="text-center"><p className="text-white/70">Loading...</p></div></div>}
+      {!appReady && <div className="flex items-center justify-center min-h-screen"><div className="text-center"><p className="text-white/70">Loading...</p></div></div>}
 
-      {!auth.authLoading && auth.view === 'login' && <LoginView />}
-      {!auth.authLoading && auth.view === 'signup' && <SignupView />}
-      {!auth.authLoading && auth.view === 'tutor_login' && <LoginView />}
-      {!auth.authLoading && auth.view === 'tutor_signup' && <SignupView />}
-      {!auth.authLoading && auth.view === 'reset' && <ResetView />}
-      {!auth.authLoading && auth.view === 'ob_screen1' && <ObScreen1 />}
-      {!auth.authLoading && auth.view === 'ob_screen2' && <ObScreen2 />}
-      {!auth.authLoading && auth.view === 'ob_screen3' && <ObScreen3 />}
-      {!auth.authLoading && auth.view === 'dashboard' && (
+      {appReady && auth.view === 'login' && <LoginView />}
+      {appReady && auth.view === 'signup' && <SignupView />}
+      {appReady && auth.view === 'tutor_login' && <LoginView />}
+      {appReady && auth.view === 'tutor_signup' && <SignupView />}
+      {appReady && auth.view === 'reset' && <ResetView />}
+      {appReady && auth.view === 'ob_screen1' && <ObScreen1 />}
+      {appReady && auth.view === 'ob_screen2' && <ObScreen2 />}
+      {appReady && auth.view === 'ob_screen3' && <ObScreen3 />}
+      {appReady && auth.view === 'dashboard' && (
         <ErrorBoundary>
           <StudentDashboard />
         </ErrorBoundary>
       )}
-      {!auth.authLoading && auth.view === 'progress' && <ProgressView />}
-      {!auth.authLoading && auth.view === 'select_level' && <SelectionPathView />}
-      {!auth.authLoading && auth.view === 'quiz' && <QuizView />}
-      {!auth.authLoading && auth.view === 'results' && <QuizResultsView quizState={user.quizState} setView={auth.setView} />}
-      {!auth.authLoading && auth.view === 'settings' && <SettingsView />}
-      {!auth.authLoading && auth.view === 'select_lesson' && <SelectLessonView />}
-      {!auth.authLoading && auth.view === 'tutor_dashboard' && <TutorDashboard onLogout={handleTutorLogout} />}
+      {appReady && auth.view === 'progress' && <ProgressView />}
+      {appReady && auth.view === 'select_level' && <SelectionPathView />}
+      {appReady && auth.view === 'quiz' && <QuizView />}
+      {appReady && auth.view === 'results' && <QuizResultsView quizState={user.quizState} setView={auth.setView} />}
+      {appReady && auth.view === 'settings' && <SettingsView />}
+      {appReady && auth.view === 'select_lesson' && <SelectLessonView />}
+      {appReady && auth.view === 'tutor_dashboard' && <TutorDashboard onLogout={handleTutorLogout} />}
 
       {/* Bottom navigation for student views */}
-      {!auth.authLoading && ['dashboard','progress','settings','select_level','select_lesson','quiz','results'].includes(auth.view) && (
+      {appReady && !['quiz','results'].includes(auth.view) && (
         <BottomNav view={auth.view} setView={auth.setView} />
       )}
       

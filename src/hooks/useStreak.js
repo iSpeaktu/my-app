@@ -1,6 +1,6 @@
 // Extracted from App.js - Streak and activity tracking hook (original lines 523-620)
 import { getWeekStartISO } from '../utils/dateUtils';
-import { supabase, recordLessonHistory, updateStudentProgress, getStudentProgress, getNotifications, createNotification } from '../config/supabase';
+import { supabase, recordLessonHistory, updateStudentProgress, getStudentProgress, getNotifications, createNotification, deleteNotification } from '../config/supabase';
 
 /**
  * useStreak - Custom hook for managing weekly streaks and activity tracking
@@ -112,24 +112,39 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
             console.error('Failed to re-fetch student progress after update:', err);
           }
 
-        // Auto-send teacher notification if assigned
-        if (!alreadyPassed) {
-          try {
-            const studentRow = await getStudentProgress(userId);
-            const teacherId = studentRow?.teacher_id || null;
-            if (teacherId) {
-              const existingNotifications = await getNotifications(userId);
-              const lessonKey = String(selection.lessonNumber || '');
-              const hasType = (existingNotifications || []).some(n =>
-                String(n.lesson_id || '') === lessonKey && n.type === (passed ? 'praise' : 'reminder')
-              );
-              if (!hasType) {
-                await createNotification(userId, passed ? 'praise' : 'reminder', teacherId, lessonKey);
+        // Auto-send or clear teacher notification if assigned
+        try {
+          const studentRow = await getStudentProgress(userId);
+          const teacherId = studentRow?.teacher_id || null;
+          if (teacherId) {
+            const existingNotifications = await getNotifications(userId);
+            const lessonKey = String(selection.lessonNumber || '');
+
+            if (passed && typeof scorePercent === 'number' && scorePercent > 70) {
+              // If the student passed with >70%, remove any teacher 'reminder' for this lesson
+              const reminders = (existingNotifications || []).filter(n => String(n.lesson_id || '') === lessonKey && n.type === 'reminder');
+              for (const r of reminders) {
+                try {
+                  await deleteNotification(userId, r.id);
+                } catch (delErr) {
+                  console.warn('Failed to delete reminder notification', r.id, delErr);
+                }
+              }
+              // Ensure a 'praise' exists (create if missing)
+              const hasPraise = (existingNotifications || []).some(n => String(n.lesson_id || '') === lessonKey && n.type === 'praise');
+              if (!hasPraise) {
+                await createNotification(userId, 'praise', teacherId, lessonKey);
+              }
+            } else if (!passed) {
+              // Student did not pass: create a reminder if one doesn't already exist
+              const hasReminder = (existingNotifications || []).some(n => String(n.lesson_id || '') === lessonKey && n.type === 'reminder');
+              if (!alreadyPassed && !hasReminder) {
+                await createNotification(userId, 'reminder', teacherId, lessonKey);
               }
             }
-          } catch (err) {
-            console.error('Failed to auto-send notification:', err);
           }
+        } catch (err) {
+          console.error('Failed to auto-send/clear notification:', err);
         }
       }
     } catch (err) {

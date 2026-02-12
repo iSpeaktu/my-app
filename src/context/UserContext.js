@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 import { useAuthContext } from './AuthContext';
 import { getStoredSelection } from '../utils/storage';
 import { updateStudentData } from '../config/supabase';
@@ -42,6 +42,10 @@ export const UserProvider = ({ children }) => {
 
   const auth = useAuthContext();
 
+  // Initialization guard: true while we are restoring onboarding/selection
+  // from the database so we don't accidentally persist back during that step.
+  const initRef = useRef(false);
+  const [hasInitializedOnboarding, setHasInitializedOnboarding] = useState(false);
   // Initialize useStreak hook to get recordActivity for quiz completion
   const { recordActivity } = useStreak(streakState, setStreakState, onboardingData, selection);
 
@@ -54,6 +58,9 @@ export const UserProvider = ({ children }) => {
     if (auth && auth.session && auth.session.user) {
       (async () => {
         try {
+          // Mark initialization in-progress so setter wrappers avoid persisting
+          initRef.current = true;
+
           const { material, level, teacherName, hasAssignedTeacher, lessonsPerWeek, streakState: restoredStreakState, notifications: restoredNotifications, achievements: restoredAchievements } = await loadStudentData(
             auth.session.user,
             auth.userName,
@@ -79,6 +86,10 @@ export const UserProvider = ({ children }) => {
           try { auth.setHasAssignedTeacher(typeof hasAssignedTeacher === 'boolean' ? hasAssignedTeacher : !!teacherName); } catch (e) {}
         } catch (e) {
           console.warn('Failed to restore student data on session restore', e);
+        } finally {
+          // Initialization complete — allow subsequent updates to persist
+          initRef.current = false;
+          if (mounted) setHasInitializedOnboarding(true);
         }
       })();
     }
@@ -93,13 +104,36 @@ export const UserProvider = ({ children }) => {
       return resolvedValue;
     });
 
+    // Persist locally immediately so cache is ready for next reload
+    try {
+      if (resolvedValue) {
+        localStorage.setItem('user_selection', JSON.stringify(resolvedValue));
+      }
+    } catch (e) {
+      // ignore localStorage failures
+    }
+
     try {
       const matId = resolvedValue?.material?.id || null;
       const lvl = resolvedValue?.level || null;
       const studentIdOrName = auth?.session?.user?.id || (auth?.userName || '').toLowerCase();
+
+      // If we are still initializing from the DB, do not persist — this
+      // prevents the initial rehydration from immediately writing back
+      // (possibly overwriting valid DB values with local defaults).
+      if (initRef.current) {
+        return;
+      }
+
       if (studentIdOrName) {
-        // Fire-and-forget persistence; updateStudentData accepts an id or username
-        updateStudentData(studentIdOrName, { current_lesson_track_id: matId, current_level: lvl }).catch(e => console.warn('Persist selection failed', e));
+        // Build updates only with non-null values to avoid writing nulls
+        const updates = {};
+        if (matId !== null && typeof matId !== 'undefined') updates.current_lesson_track_id = matId;
+        if (lvl !== null && typeof lvl !== 'undefined') updates.current_level = lvl;
+        if (Object.keys(updates).length > 0) {
+          // Fire-and-forget persistence; updateStudentData accepts an id or username
+          updateStudentData(studentIdOrName, updates).catch(e => console.warn('Persist selection failed', e));
+        }
       } else {
         // No authenticated identifier yet; skip persistence silently
       }
@@ -107,6 +141,15 @@ export const UserProvider = ({ children }) => {
       console.warn('setSelectionWrapped persistence error', e);
     }
   };
+
+  // Cache onboardingData locally after initialization to keep a cache-first strategy
+  useEffect(() => {
+    try {
+      if (onboardingData && !initRef.current) {
+        localStorage.setItem('user_onboarding', JSON.stringify(onboardingData));
+      }
+    } catch (e) {}
+  }, [onboardingData]);
   
   // Quiz state tracking (original line 207)
   const [quizState, setQuizState] = useState({ 
@@ -149,6 +192,8 @@ export const UserProvider = ({ children }) => {
     // Current selection
     selection,
     setSelection: setSelectionWrapped,
+    // Initialization flag exported so UI can guard until restore finishes
+    hasInitializedOnboarding,
     
     // Quiz state
     quizState,
