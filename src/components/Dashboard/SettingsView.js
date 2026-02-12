@@ -28,10 +28,18 @@ export default function SettingsView() {
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
       if (userId && typeof persistData === 'function') {
-        await persistData(userId, updates);
+        const result = await persistData(userId, updates, { throwOnError: false });
+        if (!result || result.success === false) {
+          const msg = result?.error || 'Unknown persistence error';
+          console.warn('persistData returned error:', msg);
+          return { success: false, error: msg };
+        }
+        return { success: true };
       }
+      return { success: false, error: 'No user or persistData unavailable' };
     } catch (e) {
       console.warn('persistData call failed:', e?.message || e);
+      return { success: false, error: e?.message || String(e) };
     }
   };
 
@@ -56,10 +64,25 @@ export default function SettingsView() {
         console.warn('Persistence to Supabase failed:', e?.message || e);
       }
 
-      // also call generic persist hook
-      await callPersist({ userName: (name || '').toLowerCase(), onboardingData: { material: materialSpec, level: selectedLevel, lessonsPerWeek } });
+      // also call generic persist hook; include a lightweight `settings` object
+      const persistResult = await callPersist({
+        userName: (name || '').toLowerCase(),
+        onboardingData: { material: materialSpec, level: selectedLevel, lessonsPerWeek },
+        settings: {
+          preferences: {
+            preferredMaterialId: materialSpec.id,
+            preferredLevel: selectedLevel,
+            lessonsPerWeek
+          },
+          lastSavedAt: new Date().toISOString()
+        }
+      });
 
-      setMessage('Saved');
+      if (!persistResult || persistResult.success === false) {
+        setMessage('Save failed: ' + (persistResult?.error || 'Unknown error'));
+      } else {
+        setMessage('Saved');
+      }
     } catch (err) {
       console.error('Save failed:', err);
       setMessage('Save failed');

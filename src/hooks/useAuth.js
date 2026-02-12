@@ -1,6 +1,6 @@
 // Extracted from App.js - Authentication hook (original lines 170-480)
 import { useState, useEffect } from 'react';
-import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, teacherAuthResetPassword, studentAuthResetPassword, findStudentEmailByUsername } from '../config/supabase';
+import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, teacherAuthResetPassword, studentAuthResetPassword, findStudentEmailByUsername, waitForAuthSession, upsertProfile, upsertStudentProfile } from '../config/supabase';
 import { getStoredSelection, getStoredView } from '../utils/storage';
 import { getWeekStartISO } from '../utils/dateUtils';
 
@@ -130,7 +130,9 @@ export const useStudentAuth = () => {
       return { error: 'Password must be at least 6 characters' };
     }
     try {
-      const user = await studentAuthSignUp(fullName, email.toLowerCase(), password);
+      const user = await studentAuthSignUp(email.toLowerCase(), password, fullName);
+      // Wait briefly for Supabase to establish session after sign-up
+      await waitForAuthSession(8000, 300);
       if (onSuccess) {
         onSuccess(user);
       }
@@ -215,7 +217,8 @@ export const useTeacherAuth = () => {
       return { error: 'Password must be at least 6 characters' };
     }
     try {
-      const user = await teacherAuthSignUp(fullName, email.toLowerCase(), password);
+      const user = await teacherAuthSignUp(email.toLowerCase(), password, fullName);
+      await waitForAuthSession(8000, 300);
       if (onSuccess) {
         onSuccess(user);
       }
@@ -236,41 +239,52 @@ export const useTeacherAuth = () => {
  * Handles data restoration from database after successful authentication.
  */
 export const usePersistentAuth = () => {
-  const persistData = async (userId, updates) => {
-    // Original lines ~484-530
+  const persistData = async (userId, updates, options = {}) => {
+    const { throwOnError = false } = options;
     if (!userId) {
       console.warn('No authenticated user - skipping persistence');
-      return;
+      return { success: false, error: 'No userId' };
+    }
+
+    const profileUpdates = {};
+    if (updates.userName) profileUpdates.username = updates.userName;
+    if (updates.displayName) profileUpdates.full_name = updates.displayName;
+    if (updates.role) profileUpdates.role = updates.role;
+    // Optional: application-level settings/preferences stored as JSON
+    // Expected schema: profiles.settings should be a JSON/JSONB column.
+    // Example: { theme: 'dark', notifications: { email: true }, editor: { compact: false } }
+    if (updates.settings) profileUpdates.settings = updates.settings;
+
+    const studentUpdates = {};
+    if (updates.onboardingData) {
+      studentUpdates.current_material_id = updates.onboardingData.material?.id || null;
+      studentUpdates.current_level = updates.onboardingData.level || null;
+      if (typeof updates.onboardingData.lessonsPerWeek === 'number') {
+        studentUpdates.lessons_per_week = updates.onboardingData.lessonsPerWeek;
+      }
+    }
+    if (updates.streakState) {
+      studentUpdates.weekly_streak = updates.streakState.weeklyStreak || 0;
+    }
+    if (typeof updates.xp === 'number') {
+      studentUpdates.xp = updates.xp;
     }
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData?.session?.user;
-
-      const profileUpdates = {};
-      if (updates.userName) profileUpdates.username = updates.userName;
-      if (updates.displayName) profileUpdates.display_name = updates.displayName;
-      if (updates.role) profileUpdates.role = updates.role;
-
-      const studentUpdates = {};
-      if (updates.onboardingData) {
-        studentUpdates.current_material_id = updates.onboardingData.material?.id || null;
-        studentUpdates.current_level = updates.onboardingData.level || null;
-        if (typeof updates.onboardingData.lessonsPerWeek === 'number') {
-          studentUpdates.lessons_per_week = updates.onboardingData.lessonsPerWeek;
-        }
+      const ops = [];
+      if (Object.keys(profileUpdates).length > 0) {
+        ops.push(upsertProfile(userId, profileUpdates));
       }
-      if (updates.streakState) {
-        studentUpdates.weekly_streak = updates.streakState.weeklyStreak || 0;
+      if (Object.keys(studentUpdates).length > 0) {
+        ops.push(upsertStudentProfile(userId, studentUpdates));
       }
-      if (typeof updates.xp === 'number') {
-        studentUpdates.xp = updates.xp;
-      }
-
-      return { success: true, profileUpdates, studentUpdates };
+      if (ops.length > 0) await Promise.all(ops);
+      return { success: true };
     } catch (err) {
-      console.error('Failed to prepare data persistence:', err);
-      return { error: err.message };
+      console.error('Failed to persist data to Supabase:', err);
+      const payload = { success: false, error: err?.message || String(err) };
+      if (throwOnError) throw err;
+      return payload;
     }
   };
 

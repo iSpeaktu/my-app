@@ -243,7 +243,9 @@ export const studentAuthSignUp = async (email, password, fullName) => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const { error } = await supabase
           .from('students')
-          .insert([{ id: userId }], { returning: 'minimal' });
+          .insert([
+            { id: userId, xp: 0, weekly_streak: 0, lessons_per_week: 3 }
+          ], { returning: 'minimal' });
         if (!error) {
           lastError = null;
           break;
@@ -547,18 +549,34 @@ export const redeemTeacherInvite = async (token) => {
   }
 };
 
+// Wait for auth session to become available after signUp
+export const waitForAuthSession = async (timeoutMs = 8000, intervalMs = 300) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session) return sessionData.session;
+    } catch (err) {
+      // ignore and retry
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise(res => setTimeout(res, intervalMs));
+  }
+  return null;
+};
+
 // --- LESSON HISTORY & STUDENT DATA ---
-export const recordLessonHistory = async (studentUserId, lessonId, score, passed, failures = []) => {
+export const recordLessonHistory = async (studentUserId, lessonId, score, passed, failures = [], lessonTrackId = null, level = null) => {
   try {
     if (!studentUserId) throw new Error('Student user ID required');
-    const { data: existing, error: fetchError } = await supabase
+    let query = supabase
       .from('lesson_history')
       .select('id')
       .eq('student_id', studentUserId)
-      .eq('lesson_id', lessonId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq('lesson_id', lessonId);
+    if (lessonTrackId) query = query.eq('lesson_track_id', lessonTrackId);
+    query = query.order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const { data: existing, error: fetchError } = await query;
     if (fetchError) throw fetchError;
 
     if (existing?.id) {
@@ -568,7 +586,9 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
           score,
           passed,
           failures: failures || [],
-          created_at: new Date()
+          created_at: new Date(),
+          lesson_track_id: lessonTrackId || null,
+          level: level || null
         })
         .eq('id', existing.id);
       if (updateError) throw updateError;
@@ -583,7 +603,9 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
         score,
         passed,
         failures: failures || [],
-        created_at: new Date()
+        created_at: new Date(),
+        lesson_track_id: lessonTrackId || null,
+        level: level || null
       }], { returning: 'minimal' });
     if (error) throw error;
   } catch (err) {
@@ -772,6 +794,21 @@ export const upsertProfile = async (userId, profileData) => {
     if (error) throw error;
   } catch (err) {
     console.error('upsertProfile error:', err);
+    throw err;
+  }
+};
+
+// Convenience helper to update user settings stored in `profiles.settings` JSON column.
+// NOTE: For this to work the `profiles` table should include a `settings` JSON/JSONB column.
+// Example settings shape: { theme: 'dark', notifications: { email: true }, editor: { compact: false } }
+export const updateUserSettings = async (userId, settings) => {
+  try {
+    if (!userId) throw new Error('User ID required');
+    if (settings === undefined || settings === null) throw new Error('Settings required');
+    await upsertProfile(userId, { settings });
+    return true;
+  } catch (err) {
+    console.error('updateUserSettings error:', err);
     throw err;
   }
 };

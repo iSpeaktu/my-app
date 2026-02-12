@@ -35,7 +35,7 @@ import { useNotifications } from './hooks/useNotifications';
 import { useInviteToken } from './hooks/useInviteToken';
 
 // === CONFIG ===
-import { supabase } from './config/supabase';
+import { supabase, waitForAuthSession } from './config/supabase';
 
 // === CONSTANTS ===
 import { MATERIALS_DATA } from './constants';
@@ -54,23 +54,30 @@ function AppContent() {
     try {
       const token = getStoredInviteToken();
       if (!token) return;
+      // Wait for a valid auth session if possible (handles race after signup)
+      await waitForAuthSession(8000, 300);
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
       if (!userId) {
-        // Not signed in; show login/signup flow — keep invite token stored
+        // Not signed in; show login/signup flow — keep invite token stored and prompt user to confirm after signing in
         auth.setInviteConfirmed(true);
         return;
       }
-      // Resolve teacher id and assign
-      const { redeemTeacherInvite, assignStudentToTeacher } = await import('./config/supabase');
+
+      // Resolve teacher id and assign (do not clear token unless assignment succeeds)
+      const { redeemTeacherInvite, assignStudentToTeacher, getTeacherNameByUserId } = await import('./config/supabase');
       const teacherId = await redeemTeacherInvite(token);
-      if (!teacherId) throw new Error('Invalid or expired invite');
+      if (!teacherId) {
+        throw new Error('Invalid or expired invite');
+      }
+
       await assignStudentToTeacher(userId, teacherId, token);
+
       // Fetch teacher display name and set on auth so UI updates immediately
-      const { getTeacherNameByUserId } = await import('./config/supabase');
       const teacherName = await getTeacherNameByUserId(teacherId).catch(() => null);
       if (teacherName) auth.setStudentTeacherName(teacherName);
-      // Clear token and mark confirmed
+
+      // Clear token and mark confirmed only after successful assignment
       clearInviteToken();
       clearStoredInviteToken();
       auth.setInviteConfirmed(true);

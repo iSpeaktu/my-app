@@ -92,8 +92,8 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
       const userId = sessionData?.session?.user?.id;
 
       if (userId) {
-        // Record lesson to database
-        await recordLessonHistory(userId, selection.lessonNumber, scorePercent, passed, failures);
+        // Record lesson to database (include track id and level)
+        await recordLessonHistory(userId, selection.lessonNumber, scorePercent, passed, failures, selection.material?.id || null, selection.level || null);
         await updateStudentProgress(userId, {
           xp: computedXp,
           weekly_streak: weeklyStreak,

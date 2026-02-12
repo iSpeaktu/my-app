@@ -18,6 +18,8 @@ import {
 import { Header, Icon, Card } from '../common';
 import ProgressCard from './ProgressCard';
 import { supabase, getTeacherNameByUserId, upsertAchievement } from '../../config/supabase';
+import { MATERIALS_DATA } from '../../constants/materials';
+import { useMaterials } from '../../hooks/useMaterials';
 
 /**
  * ProgressView - Student progress tracking and achievements interface
@@ -50,6 +52,21 @@ export default function ProgressView({
   const setStudentAchievements = propsSetStudentAchievements || user.setStudentAchievements || (() => {});
   const [showMastered, setShowMastered] = useState(true);
   const [activeTerm, setActiveTerm] = useState(null);
+
+  // Resolve material spec for the onboardingData; onboardingData.material may be an id or an object.
+  const { materials: dbMaterials } = useMaterials();
+  const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
+  const resolveMaterial = (m) => {
+    if (!m) return null;
+    if (typeof m === 'string' || typeof m === 'number') {
+      return materials.find(x => x.id === m) || null;
+    }
+    // If it's an object, it may contain only an id or full spec
+    if (m.id) return materials.find(x => x.id === m.id) || m;
+    return m;
+  };
+
+  const materialSpec = resolveMaterial(onboardingData?.material);
 
   // Fetch teacher name if not already loaded
   useEffect(() => {
@@ -155,16 +172,16 @@ export default function ProgressView({
         </div>
       )}
 
-      {onboardingData?.material && (
+      {materialSpec && (
         <div className="mb-6">
           <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-3">Your Current Track</h4>
           <Card className="border-[#00F2FF40] bg-[#00F2FF05]">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
-                <Icon name={onboardingData.material?.icon} style={{ color: onboardingData.material?.color }} />
+                <Icon name={materialSpec?.icon} style={{ color: materialSpec?.color }} />
               </div>
               <div className="flex-1">
-                <h3 className="font-bold text-lg text-white">{onboardingData.material?.title || "Language Track"}</h3>
+                <h3 className="font-bold text-lg text-white">{materialSpec?.title || "Language Track"}</h3>
                 <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData.level}</p>
               </div>
             </div>

@@ -49,6 +49,13 @@ export default function StudentDashboard() {
 
   const { materials: dbMaterials } = useMaterials();
   const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
+  const resolveMaterial = (m) => {
+    if (!m) return null;
+    if (typeof m === 'string' || typeof m === 'number') return materials.find(x => x.id === m) || null;
+    if (m.id) return materials.find(x => x.id === m.id) || m;
+    return m;
+  };
+  const currentMaterial = resolveMaterial(onboardingData?.material);
 
   const handleLogout = async () => {
     try {
@@ -144,13 +151,13 @@ export default function StudentDashboard() {
           <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-4">My Current Track</h4>
           <Card className="border-[#00F2FF40] bg-[#00F2FF05]" onClick={() => { setSelection({ material: onboardingData.material, level: onboardingData.level }); setView('select_lesson'); }}>
               <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
-                      <Icon name={onboardingData.material?.icon} style={{ color: onboardingData.material?.color }} />
-                  </div>
-                  <div className="flex-1">
-                      <h3 className="font-bold text-lg text-white">{onboardingData.material?.title || "Language Track"}</h3>
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
+                      <Icon name={currentMaterial?.icon} style={{ color: currentMaterial?.color }} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-lg text-white">{currentMaterial?.title || "Language Track"}</h3>
                       <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData.level}</p>
-                  </div>
+                    </div>
                   <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
               </div>
           </Card>

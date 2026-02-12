@@ -5,7 +5,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
 import { useInviteToken } from '../../hooks/useInviteToken';
 import { useStudentData } from '../../hooks/useStudentData';
-import { studentAuthSignUp, teacherAuthSignUp, redeemTeacherInvite, assignStudentToTeacher, supabase } from '../../config/supabase';
+import { studentAuthSignUp, teacherAuthSignUp, redeemTeacherInvite, assignStudentToTeacher, supabase, waitForAuthSession } from '../../config/supabase';
 import { isValidEmail } from '../../utils/validation';
 
 /**
@@ -114,6 +114,7 @@ export default function SignupView() {
               // Handle tutor signup
               if (auth.view === 'tutor_signup') {
                 const teacherUser = await teacherAuthSignUp(email.toLowerCase(), password, fullName);
+                await waitForAuthSession(8000, 300);
                 const { data: sessionData } = await supabase.auth.getSession();
                 if (!sessionData?.session) {
                   setLoginNotice('Check your email to confirm your account before signing in.');
@@ -135,6 +136,7 @@ export default function SignupView() {
               
               // Handle student signup
               const authUser = await studentAuthSignUp(email.toLowerCase(), password, fullName);
+              await waitForAuthSession(8000, 300);
               const { data: sessionData } = await supabase.auth.getSession();
               if (!sessionData?.session) {
                 setLoginNotice('Check your email to confirm your account before signing in.');
