@@ -136,6 +136,21 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {}
   }, [view, auth.session]);
 
+  // Normalize any invalid view values (defensive guard against transient undefined values)
+  useEffect(() => {
+    try {
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      if (typeof view !== 'string' || !allowedViews.has(view)) {
+        // If the view is invalid/undefined, pick a safe default based on session
+        const safe = auth.session ? (auth.userRole === 'teacher' ? 'tutor_dashboard' : 'dashboard') : 'login';
+        console.warn('AuthContext: normalizing invalid view ->', view, '=>', safe);
+        _setView(safe);
+      }
+    } catch (e) {
+      console.error('Failed to normalize view', e);
+    }
+  }, [view, auth.session, auth.userRole]);
+
   // Provide a stable, safe setView wrapper so consumers always get a callable function
   const setView = useCallback((next) => {
     try {

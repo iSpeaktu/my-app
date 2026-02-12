@@ -91,7 +91,7 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
 
-      if (userId) {
+        if (userId) {
         // Record lesson to database (include track id and level)
         await recordLessonHistory(userId, selection.lessonNumber, scorePercent, passed, failures, selection.material?.id || null, selection.level || null);
         await updateStudentProgress(userId, {
@@ -101,6 +101,16 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
           current_level: selection.level || null,
           last_activity_date: passed ? now.toISOString() : undefined
         });
+
+          // Re-fetch student progress from DB to ensure the weekly streak was persisted
+          try {
+            const studentRow = await getStudentProgress(userId);
+            if (studentRow && typeof studentRow.weekly_streak === 'number') {
+              setStreakState(prev => ({ ...prev, weeklyStreak: studentRow.weekly_streak }));
+            }
+          } catch (err) {
+            console.error('Failed to re-fetch student progress after update:', err);
+          }
 
         // Auto-send teacher notification if assigned
         if (!alreadyPassed) {

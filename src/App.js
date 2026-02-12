@@ -157,14 +157,9 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
       {!auth.authLoading && auth.view === 'ob_screen2' && <ObScreen2 />}
       {!auth.authLoading && auth.view === 'ob_screen3' && <ObScreen3 />}
       {!auth.authLoading && auth.view === 'dashboard' && (
-        // Guard: don't render dashboard until onboarding data is present
-        (!user || !user.onboardingData || !user.onboardingData.material)
-          ? <LoadingSpinner message="Preparing your dashboard..." />
-          : (
-            <ErrorBoundary>
-              <StudentDashboard />
-            </ErrorBoundary>
-          )
+        <ErrorBoundary>
+          <StudentDashboard />
+        </ErrorBoundary>
       )}
       {!auth.authLoading && auth.view === 'progress' && <ProgressView />}
       {!auth.authLoading && auth.view === 'select_level' && <SelectionPathView />}

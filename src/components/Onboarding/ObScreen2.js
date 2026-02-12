@@ -4,6 +4,7 @@ import Icon from '../common/Icon';
 import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
 import { MATERIALS_DATA } from '../../constants/materials';
+import { updateStudentData } from '../../config/supabase';
 import { useMaterials } from '../../hooks/useMaterials';
 
 /**
@@ -23,10 +24,20 @@ export default function ObScreen2() {
     {materials.map(m => (
       <button
         key={m.id}
-        onClick={() => {
-          setOnboardingData({ ...onboardingData, material: m });
-          setView('ob_screen3');
-        }}
+        onClick={async () => {
+            const next = { ...onboardingData, material: m };
+            setOnboardingData(next);
+            // Persist selection to students table if signed in
+            try {
+              const userId = auth?.session?.user?.id || null;
+              if (userId) {
+                await updateStudentData(userId, { current_lesson_track_id: m?.id || null });
+              }
+            } catch (err) {
+              console.error('Failed to persist selected track on onboarding step:', err);
+            }
+            setView('ob_screen3');
+          }}
         aria-label={`Select ${m.title} as your study track`}
         className="w-full p-5 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 flex items-center gap-4 hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all"
       >

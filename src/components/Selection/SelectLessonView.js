@@ -60,25 +60,22 @@ export default function SelectLessonView(props) {
           const h = history.filter(a => a.lessonId === num).slice(-1)[0];
           const isPassed = h && h.passed;
           const isFailed = h && !h.passed;
+          const isHighScore = h && typeof h.score === 'number' && h.score >= 70;
           const isCurrent = num === maxCompleted + 1;
           const isFuture = num > maxCompleted + 1;
+
+          const labelClass = `absolute -top-12 px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest shadow-lg ${isHighScore ? 'bg-[#FF2E6315] text-[#FF2E63] border-[#FF2E63]' : (isFailed ? 'bg-[#FF2E63] text-white border-[#FF2E63]' : (isPassed ? 'bg-[#1C1C26] text-[#00FF94] border-[#00FF9430]' : (isCurrent ? 'bg-[#00F2FF] text-[#0A0A0C] border-[#00F2FF]' : 'bg-[#1C1C26] text-white/20 border-[#2D2D3A]')))}`;
+          const buttonClass = `w-20 h-20 rounded-2xl border-2 relative flex items-center justify-center transition-all shadow-[0_8px_20px_rgba(0,0,0,0.5)] focus:border-[#00F2FF] focus:outline-none ${isHighScore ? 'border-[#FF2E63] text-[#FF2E63] shadow-[0_0_20px_rgba(255,46,99,0.25)]' : (isFailed ? 'border-[#FF2E63] text-[#FF2E63]' : (isPassed ? 'border-[#00FF9440] text-[#00FF94]' : (isCurrent ? 'border-[#00F2FF] text-[#0A0A0C] scale-110 shadow-[0_0_30px_rgba(0,242,255,0.3),0_8px_20px_rgba(0,0,0,0.5)]' : 'border-gray-200 text-gray-400')))} ${isCurrent ? 'bg-[#00F2FF]' : 'bg-gray-100'} ${isFuture && !isCurrent ? 'opacity-30' : 'opacity-100'}`;
 
           return (
             <div key={num} className={`relative flex items-center w-full ${i % 2 !== 0 ? 'flex-row-reverse' : 'flex-row'}`}>
               <div className="w-1/2 flex flex-col items-center relative">
                 {/* Floating Lesson Label */}
-                <div className={`absolute -top-12 px-4 py-2 rounded-xl border text-[10px] font-black uppercase tracking-widest shadow-lg ${isFailed ? 'bg-[#FF2E63] text-white border-[#FF2E63]' : (isPassed ? 'bg-[#1C1C26] text-[#00FF94] border-[#00FF9430]' : (isCurrent ? 'bg-[#00F2FF] text-[#0A0A0C] border-[#00F2FF]' : 'bg-[#1C1C26] text-white/20 border-[#2D2D3A]'))}` }>
-                  Lesson {num}
-                </div>
+                <div className={labelClass}>Lesson {num}</div>
 
                 {/* Lesson Button (Node) */}
-                <button onClick={() => handleClick(num, isFuture, isCurrent)}
-                  className={`w-20 h-20 rounded-2xl border-2 relative flex items-center justify-center transition-all shadow-[0_8px_20px_rgba(0,0,0,0.5)] focus:border-[#00F2FF] focus:outline-none 
-                    ${isFailed ? 'border-[#FF2E63] text-[#FF2E63]' : (isPassed ? 'border-[#00FF9440] text-[#00FF94]' : (isCurrent ? 'border-[#00F2FF] text-[#0A0A0C] scale-110 shadow-[0_0_30px_rgba(0,242,255,0.3),0_8px_20px_rgba(0,0,0,0.5)]' : 'border-gray-200 text-gray-400'))} 
-                    ${isCurrent ? 'bg-[#00F2FF]' : 'bg-gray-100'} 
-                    ${isFuture && !isCurrent ? 'opacity-30' : 'opacity-100'}`}
-                >
-                  {isPassed ? <Icon name="CheckCircle2" size={32} /> : (isFailed ? <Icon name="Flag" size={32} /> : <span className="font-bold text-2xl">{num}</span>)}
+                <button onClick={() => handleClick(num, isFuture, isCurrent)} className={buttonClass}>
+                  {isHighScore ? <Icon name="Flag" size={32} /> : (isPassed ? <Icon name="CheckCircle2" size={32} /> : (isFailed ? <Icon name="Flag" size={32} /> : <span className="font-bold text-2xl">{num}</span>))}
                 </button>
               </div>
               <div className="w-1/2" />

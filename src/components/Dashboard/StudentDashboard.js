@@ -163,7 +163,7 @@ export default function StudentDashboard() {
           </Card>
       </div>
 
-      <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Explore Materials</h4>
+      <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Explore Tracks</h4>
       <div className="grid grid-cols-1 gap-4">
         {materials.filter(m => m.id !== onboardingData?.material?.id).map((mat) => (
           <Card key={mat.id} onClick={() => { setSelection({ material: mat }); setView('select_level'); }}>

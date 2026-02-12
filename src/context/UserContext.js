@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { useAuthContext } from './AuthContext';
+import { getStoredSelection } from '../utils/storage';
 import { updateStudentData } from '../config/supabase';
 import { useStudentData } from '../hooks/useStudentData';
 import { useStreak } from '../hooks/useStreak';
@@ -17,9 +18,10 @@ export const UserProvider = ({ children }) => {
   const [avatarLoading, setAvatarLoading] = useState(false);
   
   // Onboarding progress (original lines 193-197)
+  const storedSelection = getStoredSelection();
   const [onboardingData, setOnboardingData] = useState({
-    material: null,
-    level: null,
+    material: storedSelection?.material || null,
+    level: storedSelection?.level || null,
     lessonsPerWeek: 3
   });
 
@@ -32,7 +34,7 @@ export const UserProvider = ({ children }) => {
   });
 
   // Current lesson selection (original line 206)
-  const [selection, setSelection] = useState({ 
+  const [selection, setSelection] = useState(storedSelection || { 
     material: null, 
     level: null, 
     lessonNumber: null 
