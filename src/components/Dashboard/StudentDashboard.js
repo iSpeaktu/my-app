@@ -33,12 +33,12 @@ export default function StudentDashboard() {
 
   const displayName = auth.displayName || auth.userName;
   const userName = auth.userName;
-  const streakState = user.streakState;
-  const onboardingData = user.onboardingData;
-  const studentNotifications = user.studentNotifications;
-  const setStudentNotifications = user.setStudentNotifications;
-  const selection = user.selection;
-  const setSelection = user.setSelection;
+  const streakState = user.streakState || { weeklyActivityCount: 0, completedHistory: [] };
+  const onboardingData = user.onboardingData || {};
+  const studentNotifications = user.studentNotifications || [];
+  const setStudentNotifications = user.setStudentNotifications || (() => {});
+  const selection = user.selection || {};
+  const setSelection = user.setSelection || (() => {});
   const view = auth.view;
   const setView = auth.setView;
   const quizState = user.quizState;
@@ -74,7 +74,7 @@ export default function StudentDashboard() {
   const praise = (studentNotifications || []).find(n => n.type === 'praise') || null;
 
   const weeklyTarget = onboardingData?.lessonsPerWeek || 3;
-  const progressPerc = Math.min(100, (streakState.weeklyActivityCount / weeklyTarget) * 100);
+  const progressPerc = Math.min(100, (streakState?.weeklyActivityCount || 0) / weeklyTarget * 100);
 
   const dismissPraise = async (e) => {
       e.stopPropagation();
@@ -154,10 +154,10 @@ export default function StudentDashboard() {
                     <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
                       <Icon name={currentMaterial?.icon} style={{ color: currentMaterial?.color }} />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-lg text-white">{currentMaterial?.title || "Language Track"}</h3>
-                      <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData.level}</p>
-                    </div>
+                          <div className="flex-1">
+                            <h3 className="font-bold text-lg text-white">{currentMaterial?.title || "Language Track"}</h3>
+                            <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData?.level || ''}</p>
+                          </div>
                   <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
               </div>
           </Card>
@@ -165,7 +165,7 @@ export default function StudentDashboard() {
 
       <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Explore Materials</h4>
       <div className="grid grid-cols-1 gap-4">
-        {materials.filter(m => m.id !== onboardingData.material?.id).map((mat) => (
+        {materials.filter(m => m.id !== onboardingData?.material?.id).map((mat) => (
           <Card key={mat.id} onClick={() => { setSelection({ material: mat }); setView('select_level'); }}>
             <div className="flex items-center gap-5">
               <div className="w-12 h-12 rounded-xl bg-[#1C1C26] border border-[#2D2D3A] flex items-center justify-center">
@@ -173,7 +173,7 @@ export default function StudentDashboard() {
               </div>
               <div className="flex-1">
                 <h3 className="font-bold text-lg text-white">{mat.title}</h3>
-                <p className="text-white opacity-50 text-sm">{mat.levels.length} Levels</p>
+                      <p className="text-white opacity-50 text-sm">{(mat.levels || []).length} Levels</p>
               </div>
               <ChevronRight className="text-white opacity-40" />
             </div>

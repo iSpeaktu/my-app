@@ -18,7 +18,7 @@ import SelectLessonView from './components/Selection/SelectLessonView';
 import QuizResultsView from './components/Quiz/QuizResultsView';
 import TutorDashboard from './components/TutorDashboard';
 import SettingsView from './components/Dashboard/SettingsView';
-import { BottomNav } from './components/common';
+import { BottomNav, LoadingSpinner, ErrorBoundary } from './components/common';
 import QuizView from './components/Quiz/QuizView';
 
 // === CUSTOM HOOKS ===
@@ -156,7 +156,16 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
       {!auth.authLoading && auth.view === 'ob_screen1' && <ObScreen1 />}
       {!auth.authLoading && auth.view === 'ob_screen2' && <ObScreen2 />}
       {!auth.authLoading && auth.view === 'ob_screen3' && <ObScreen3 />}
-      {!auth.authLoading && auth.view === 'dashboard' && <StudentDashboard />}
+      {!auth.authLoading && auth.view === 'dashboard' && (
+        // Guard: don't render dashboard until onboarding data is present
+        (!user || !user.onboardingData || !user.onboardingData.material)
+          ? <LoadingSpinner message="Preparing your dashboard..." />
+          : (
+            <ErrorBoundary>
+              <StudentDashboard />
+            </ErrorBoundary>
+          )
+      )}
       {!auth.authLoading && auth.view === 'progress' && <ProgressView />}
       {!auth.authLoading && auth.view === 'select_level' && <SelectionPathView />}
       {!auth.authLoading && auth.view === 'quiz' && <QuizView />}
