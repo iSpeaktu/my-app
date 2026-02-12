@@ -257,7 +257,7 @@ export const usePersistentAuth = () => {
 
     const studentUpdates = {};
     if (updates.onboardingData) {
-      studentUpdates.current_material_id = updates.onboardingData.material?.id || null;
+      studentUpdates.current_lesson_track_id = updates.onboardingData.material?.id || null;
       studentUpdates.current_level = updates.onboardingData.level || null;
       if (typeof updates.onboardingData.lessonsPerWeek === 'number') {
         studentUpdates.lessons_per_week = updates.onboardingData.lessonsPerWeek;

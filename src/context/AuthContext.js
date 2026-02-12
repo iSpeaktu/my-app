@@ -1,5 +1,7 @@
 import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks';
+import { supabase } from '../config/supabase';
+import { getStoredView, setStoredView } from '../utils/storage';
 
 // Original App.js lines 171-190: Authentication state management
 export const AuthContext = createContext();
@@ -21,27 +23,84 @@ export const AuthProvider = ({ children }) => {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteConfirmed, setInviteConfirmed] = useState(false);
   const [hasAssignedTeacher, setHasAssignedTeacher] = useState(null);
+  // Whether the lower-level Supabase auth state is still being resolved
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Initialize auth from useAuth hook and restore session into context
-  const handleSessionRestored = useCallback(({ sessionUser, role, setLoading: setAuthLoading }) => {
+  const handleSessionRestored = useCallback(({ sessionUser, role, setLoading }) => {
     if (sessionUser) {
       const rawDisplayName = sessionUser.user_metadata?.full_name || sessionUser.user_metadata?.display_name || sessionUser.user_metadata?.username || (sessionUser.email || '').split('@')[0] || '';
       const normalized = (rawDisplayName || '').toLowerCase();
       setUserName(normalized);
       setDisplayName(rawDisplayName || normalized);
-      // If teacher -> go to tutor dashboard, otherwise student dashboard
-      _setView(role === 'teacher' ? 'tutor_dashboard' : 'dashboard');
+      // Prefer restoring a previously stored view, otherwise fall back to role defaults
+      try {
+        const stored = getStoredView();
+        if (stored) _setView(stored);
+        else _setView(role === 'teacher' ? 'tutor_dashboard' : 'dashboard');
+      } catch (e) {
+        _setView(role === 'teacher' ? 'tutor_dashboard' : 'dashboard');
+      }
     }
-    // Ensure auth hook loading state is synced
-    if (typeof setAuthLoading === 'function') setAuthLoading(false);
+    // Ensure both the lower-level hook and this provider know loading is complete
+    if (typeof setLoading === 'function') setLoading(false);
+    try { setAuthLoading(false); } catch (e) {}
   }, []);
 
   const auth = useAuth(handleSessionRestored);
+
+  // Ensure we check Supabase immediately on mount and subscribe to auth changes
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session || null;
+        // We don't directly mutate the auth hook's state here; the hook will
+        // reconcile with Supabase via its own getSession/onAuthStateChange.
+      } catch (e) {
+        // ignore
+      } finally {
+        if (mounted) setAuthLoading(false);
+      }
+    };
+
+    init();
+
+    const { subscription } = supabase.auth.onAuthStateChange((event, payload) => {
+      if (!mounted) return;
+      // Any auth state change means the initial auth check is complete
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      try { subscription?.unsubscribe?.(); } catch (e) {}
+    };
+  }, []);
+
+  // On mount, restore last view if present (do not override explicit session-based defaults)
+  useEffect(() => {
+    try {
+      const stored = getStoredView();
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      if (stored && typeof stored === 'string' && allowedViews.has(stored)) {
+        // Only set if we are still on the initial default view
+        _setView(prev => (prev === 'login' ? stored : prev));
+      }
+    } catch (e) {}
+  }, []);
 
   // Sync auth hook session changes to context state
   const prevSessionRef = useRef();
   const signOutTimerRef = useRef(null);
   useEffect(() => {
+    // Wait until the lower-level auth hook has finished its initial loading
+    // to avoid showing the login screen briefly while the session is being
+    // restored on page refresh.
+    if (auth.loading) return;
+
     const prev = prevSessionRef.current;
     if (auth.session) {
       setLoading(false);
@@ -67,7 +126,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
     prevSessionRef.current = auth.session;
-  }, [auth.session]);
+  }, [auth.session, auth.loading]);
 
   // Debug: log view and session changes to trace unexpected resets
   useEffect(() => {
@@ -80,12 +139,25 @@ export const AuthProvider = ({ children }) => {
   // Provide a stable, safe setView wrapper so consumers always get a callable function
   const setView = useCallback((next) => {
     try {
-      if (typeof _setView === 'function') _setView(next);
-      else console.warn('Attempted to call setView but internal setter is not a function');
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      if (typeof next === 'string' && allowedViews.has(next)) {
+        if (typeof _setView === 'function') _setView(next);
+        else console.warn('Attempted to call setView but internal setter is not a function');
+      } else {
+        console.warn('Ignored invalid view passed to setView:', next);
+      }
     } catch (e) {
       console.error('setView wrapper error', e);
     }
   }, [_setView]);
+
+  // Persist view changes to localStorage so reloads restore the same view
+  useEffect(() => {
+    try {
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      if (typeof view === 'string' && allowedViews.has(view)) setStoredView(view);
+    } catch (e) {}
+  }, [view]);
 
   const value = {
     // View management
@@ -131,6 +203,8 @@ export const AuthProvider = ({ children }) => {
     // Auth hook data
     session: auth.session,
     userRole: auth.userRole,
+    // Lower-level Supabase auth loading guard
+    authLoading,
   };
 
   return (

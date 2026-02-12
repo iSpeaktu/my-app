@@ -97,7 +97,7 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
         await updateStudentProgress(userId, {
           xp: computedXp,
           weekly_streak: weeklyStreak,
-          current_material_id: selection.material?.id || null,
+          current_lesson_track_id: selection.material?.id || null,
           current_level: selection.level || null,
           last_activity_date: passed ? now.toISOString() : undefined
         });

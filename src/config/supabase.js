@@ -190,7 +190,20 @@ export const updateStudentData = async (studentName, updates) => {
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('Error updating student:', error);
+    try {
+      // Log helpful error fields if present (Postgres / Supabase error shape)
+      const details = {
+        message: error?.message || String(error),
+        code: error?.code || null,
+        hint: error?.hint || null,
+        details: error?.details || null,
+        status: error?.status || null,
+        response: error?.response || null,
+      };
+      console.error('Error updating student:', details);
+    } catch (logErr) {
+      console.error('Error updating student (failed to format):', error);
+    }
     throw error;
   }
 };
@@ -341,7 +354,7 @@ export const getTeacherRoster = async () => {
     if (studentIds.length === 0) {
       const { data: byTeacher, error: byTeacherErr } = await supabase
         .from('students')
-        .select('id, teacher_id, current_material_id, current_level, xp, weekly_streak')
+        .select('id, teacher_id, current_lesson_track_id, current_level, xp, weekly_streak')
         .eq('teacher_id', userId);
       if (byTeacherErr) throw byTeacherErr;
       students = byTeacher || [];
@@ -349,7 +362,7 @@ export const getTeacherRoster = async () => {
     } else {
       const { data: byIds, error: studentsErr } = await supabase
         .from('students')
-        .select('id, teacher_id, current_material_id, current_level, xp, weekly_streak')
+        .select('id, teacher_id, current_lesson_track_id, current_level, xp, weekly_streak')
         .in('id', studentIds);
       if (studentsErr) throw studentsErr;
       students = byIds || [];
@@ -391,7 +404,7 @@ export const getTeacherRoster = async () => {
       const student = studentById.get(id) || {};
       const history = (historyById.get(id) || []).map(h => ({
         ...h,
-        material: h.materialId || student.current_material_id || null,
+        material: h.materialId || student.current_lesson_track_id || null,
         level: h.level || student.current_level || null
       }));
       const last = history.length ? history[history.length - 1] : null;
@@ -403,7 +416,7 @@ export const getTeacherRoster = async () => {
         progress: student.current_level || 'Beginner',
         lastScore: typeof last?.score === 'number' ? last.score : 0,
         lastLessonId: last?.lessonId || 1,
-        lastMaterialId: student.current_material_id || null,
+        lastMaterialId: student.current_lesson_track_id || null,
         lastLevel: student.current_level || null,
         history,
         historyLoaded: true

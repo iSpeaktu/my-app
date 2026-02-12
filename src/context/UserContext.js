@@ -97,7 +97,7 @@ export const UserProvider = ({ children }) => {
       const studentIdOrName = auth?.session?.user?.id || (auth?.userName || '').toLowerCase();
       if (studentIdOrName) {
         // Fire-and-forget persistence; updateStudentData accepts an id or username
-        updateStudentData(studentIdOrName, { current_material_id: matId, current_level: lvl }).catch(e => console.warn('Persist selection failed', e));
+        updateStudentData(studentIdOrName, { current_lesson_track_id: matId, current_level: lvl }).catch(e => console.warn('Persist selection failed', e));
       } else {
         // No authenticated identifier yet; skip persistence silently
       }

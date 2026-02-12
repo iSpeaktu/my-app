@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 // === CONTEXT PROVIDERS ===
 import { AuthProvider, useAuthContext } from './context/AuthContext';
@@ -44,23 +44,24 @@ import { MATERIALS_DATA } from './constants';
  * AppContent: Main routing and view logic
  * Uses AuthContext and UserContext to manage state
  */
-function AppContent() {
+function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, showInviteModal, setShowInviteModal, clearStoredInviteToken }) {
   const auth = useAuthContext();
   const user = useUserContext();
-  const { getStoredInviteToken, clearStoredInviteToken, clearInviteToken } = useInviteToken();
 
   // Confirm teacher invitation
   const confirmInvite = async () => {
     try {
-      const token = getStoredInviteToken();
+      const token = inviteToken || localStorage.getItem('ispeaktu_invite_token');
       if (!token) return;
       // Wait for a valid auth session if possible (handles race after signup)
       await waitForAuthSession(8000, 300);
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData?.session?.user?.id;
       if (!userId) {
-        // Not signed in; show login/signup flow — keep invite token stored and prompt user to confirm after signing in
-        auth.setInviteConfirmed(true);
+        // Not signed in; navigate to login so user can sign in, but do NOT mark invite confirmed
+        // Keep the invite token stored so if the user refreshes the popup will show again
+        setShowInviteModal && setShowInviteModal(false);
+        auth.setView && auth.setView('login');
         return;
       }
 
@@ -78,8 +79,17 @@ function AppContent() {
       if (teacherName) auth.setStudentTeacherName(teacherName);
 
       // Clear token and mark confirmed only after successful assignment
-      clearInviteToken();
-      clearStoredInviteToken();
+      // remove invite param from URL if present
+      try {
+        if (window.history.replaceState) {
+          const url = new URL(window.location);
+          url.searchParams.delete('invite');
+          window.history.replaceState({}, document.title, url.toString());
+        }
+      } catch (e) {}
+      if (typeof clearStoredInviteToken === 'function') clearStoredInviteToken();
+      // close modal after successful assignment
+      setShowInviteModal && setShowInviteModal(false);
       auth.setInviteConfirmed(true);
       auth.setInviteTeacherName('');
       auth.setHasAssignedTeacher(true);
@@ -90,8 +100,15 @@ function AppContent() {
 
   // Cancel teacher invitation
   const cancelInvite = () => {
-    clearInviteToken();
-    clearStoredInviteToken();
+    try {
+      if (window.history.replaceState) {
+        const url = new URL(window.location);
+        url.searchParams.delete('invite');
+        window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch (e) {}
+    if (typeof clearStoredInviteToken === 'function') clearStoredInviteToken();
+    setShowInviteModal && setShowInviteModal(false);
     auth.setInviteConfirmed(false);
     auth.setInviteTeacherName('');
   };
@@ -126,48 +143,138 @@ function AppContent() {
         .animate-swing { animation: swing 2s ease infinite; }
       `}</style>
 
-      {/* Invite confirmation modal */}
-      {getStoredInviteToken() && !auth.inviteConfirmed && auth.hasAssignedTeacher !== true && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6">
-          <div className="max-w-lg w-full bg-[#16161D] border border-[#2D2D3A] rounded-2xl p-6 text-center">
-            <h3 className="text-xl font-extrabold mb-2">Confirm Teacher Invitation</h3>
-            <p className="text-white/70 mb-4">{
-              auth.inviteTeacherName
-                ? (<span>You were invited to join <strong className="text-[#00F2FF]">{auth.inviteTeacherName}</strong>.</span>)
-                : 'You were invited to join a teacher. Confirm to accept the invitation.'
-            }</p>
-            <button onClick={confirmInvite} aria-label="Confirm teacher invitation" className="w-full px-6 py-3 rounded-xl bg-[#00F2FF] text-[#0A0A0C] font-bold text-lg mb-3 focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#16161D] transition-all">Confirm</button>
-            <button onClick={cancelInvite} aria-label="Cancel teacher invitation" className="w-full text-red-500 font-bold bg-transparent py-2 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-[#16161D] rounded transition-all">Cancel</button>
-            <p className="text-xs text-white/50 mt-3">If this is not your teacher, do not accept. Only accept invitations from your teacher.</p>
+      {/* Invite modal rendering moved to end of JSX (see AppRoot) */}
+
+      {/* VIEW ROUTING */}
+      {auth.authLoading && <div className="flex items-center justify-center min-h-screen"><div className="text-center"><p className="text-white/70">Loading...</p></div></div>}
+
+      {!auth.authLoading && auth.view === 'login' && <LoginView />}
+      {!auth.authLoading && auth.view === 'signup' && <SignupView />}
+      {!auth.authLoading && auth.view === 'tutor_login' && <LoginView />}
+      {!auth.authLoading && auth.view === 'tutor_signup' && <SignupView />}
+      {!auth.authLoading && auth.view === 'reset' && <ResetView />}
+      {!auth.authLoading && auth.view === 'ob_screen1' && <ObScreen1 />}
+      {!auth.authLoading && auth.view === 'ob_screen2' && <ObScreen2 />}
+      {!auth.authLoading && auth.view === 'ob_screen3' && <ObScreen3 />}
+      {!auth.authLoading && auth.view === 'dashboard' && <StudentDashboard />}
+      {!auth.authLoading && auth.view === 'progress' && <ProgressView />}
+      {!auth.authLoading && auth.view === 'select_level' && <SelectionPathView />}
+      {!auth.authLoading && auth.view === 'quiz' && <QuizView />}
+      {!auth.authLoading && auth.view === 'results' && <QuizResultsView quizState={user.quizState} setView={auth.setView} />}
+      {!auth.authLoading && auth.view === 'settings' && <SettingsView />}
+      {!auth.authLoading && auth.view === 'select_lesson' && <SelectLessonView />}
+      {!auth.authLoading && auth.view === 'tutor_dashboard' && <TutorDashboard onLogout={handleTutorLogout} />}
+
+      {/* Bottom navigation for student views */}
+      {!auth.authLoading && ['dashboard','progress','settings','select_level','select_lesson','quiz','results'].includes(auth.view) && (
+        <BottomNav view={auth.view} setView={auth.setView} />
+      )}
+      
+      {/* Invite modal: render stable container and wait for teacher name to avoid jumps */}
+      {showInviteModal && !auth.inviteConfirmed && auth.hasAssignedTeacher !== true && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="w-[320px] min-h-[250px] bg-[#16161D] border border-[#2D2D3A] rounded-3xl p-6 flex flex-col items-center text-center">
+            {isFetchingTeacher ? (
+              <div className="flex flex-col items-center justify-center flex-1">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00F2FF]"></div>
+                <p className="mt-4 text-white/40 text-xs font-bold uppercase tracking-widest">Identifying Teacher...</p>
+              </div>
+            ) : (
+              <div className="animate-in fade-in duration-300 flex flex-col items-center w-full">
+                <h2 className="text-xl font-black mb-2 text-white">Confirm Teacher</h2>
+                <p className="text-white/60 text-sm mb-6">You were invited to join <span className="text-[#00F2FF] font-bold">{inviteTeacherNameProp || auth.inviteTeacherName || 'your teacher'}</span>.</p>
+                <div className="flex gap-3 w-full">
+                  <button onClick={confirmInvite} className="flex-1 bg-[#00F2FF] text-black py-3 rounded-xl font-bold">Confirm</button>
+                  <button onClick={cancelInvite} className="flex-1 bg-[#2D2D3A] text-white py-3 rounded-xl font-bold">Cancel</button>
+                </div>
+                <p className="mt-4 text-[10px] text-white/20 uppercase font-black leading-tight">Only accept invitations from your actual teacher.</p>
+              </div>
+            )}
           </div>
         </div>
       )}
-
-      {/* VIEW ROUTING */}
-      {auth.loading && <div className="flex items-center justify-center min-h-screen"><div className="text-center"><p className="text-white/70">Loading...</p></div></div>}
-
-      {!auth.loading && auth.view === 'login' && <LoginView />}
-      {!auth.loading && auth.view === 'signup' && <SignupView />}
-      {!auth.loading && auth.view === 'tutor_login' && <LoginView />}
-      {!auth.loading && auth.view === 'tutor_signup' && <SignupView />}
-      {!auth.loading && auth.view === 'reset' && <ResetView />}
-      {!auth.loading && auth.view === 'ob_screen1' && <ObScreen1 />}
-      {!auth.loading && auth.view === 'ob_screen2' && <ObScreen2 />}
-      {!auth.loading && auth.view === 'ob_screen3' && <ObScreen3 />}
-      {!auth.loading && auth.view === 'dashboard' && <StudentDashboard />}
-      {!auth.loading && auth.view === 'progress' && <ProgressView />}
-      {!auth.loading && auth.view === 'select_level' && <SelectionPathView />}
-      {!auth.loading && auth.view === 'quiz' && <QuizView />}
-      {!auth.loading && auth.view === 'results' && <QuizResultsView quizState={user.quizState} setView={auth.setView} />}
-      {!auth.loading && auth.view === 'settings' && <SettingsView />}
-      {!auth.loading && auth.view === 'select_lesson' && <SelectLessonView />}
-      {!auth.loading && auth.view === 'tutor_dashboard' && <TutorDashboard onLogout={handleTutorLogout} />}
-
-      {/* Bottom navigation for student views */}
-      {!auth.loading && ['dashboard','progress','settings','select_level','select_lesson','quiz','results'].includes(auth.view) && (
-        <BottomNav view={auth.view} setView={auth.setView} />
-      )}
     </div>
+  );
+}
+
+function AppRoot() {
+  const [inviteToken, setInviteToken] = useState(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const invite = useInviteToken();
+  const [isFetchingTeacher, setIsFetchingTeacher] = useState(false);
+  const [inviteTeacherName, setInviteTeacherName] = useState('');
+  const auth = useAuthContext();
+
+  // Read URL / stored token once on mount
+  useEffect(() => {
+    const urlToken = invite.getInviteToken();
+    const stored = invite.getStoredInviteToken();
+    const token = urlToken || stored;
+    if (!token) return;
+
+    try {
+      if (urlToken && window.history.replaceState) {
+        const url = new URL(window.location);
+        url.searchParams.delete('invite');
+        window.history.replaceState({}, document.title, url.toString());
+      }
+    } catch (e) {}
+
+    try { invite.setStoredInviteToken(token); } catch (e) {}
+    setInviteToken(token);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch teacher name when inviteToken changes; only run once per token
+  useEffect(() => {
+    if (!inviteToken) return;
+    let active = true;
+    setIsFetchingTeacher(true);
+
+    (async () => {
+      try {
+        const { redeemTeacherInvite, getTeacherNameByUserId } = await import('./config/supabase');
+        const teacherId = await redeemTeacherInvite(inviteToken).catch(() => null);
+        if (teacherId && active) {
+          const teacherName = await getTeacherNameByUserId(teacherId).catch(() => null);
+          if (teacherName && active) {
+            setInviteTeacherName(teacherName);
+            try { auth.setInviteTeacherName(teacherName); } catch (e) {}
+          }
+        }
+      } catch (e) {
+        console.error('Failed to resolve teacher name for invite:', e);
+      } finally {
+        if (active) setIsFetchingTeacher(false);
+        // Do not toggle showInviteModal here; wait until auth state and view reach dashboard
+        // so the modal only appears when the user is signed in and ready to confirm.
+      }
+    })();
+
+    return () => { active = false; };
+  }, [inviteToken]);
+
+  // If the user signs in after visiting via an invite, show the modal so they can confirm
+  useEffect(() => {
+    // Show the invite modal only when:
+    // - invite token exists
+    // - teacher name has been resolved
+    // - user is signed in
+    // - user is on the student dashboard
+    if (auth?.session && inviteToken && !isFetchingTeacher && inviteTeacherName && auth.hasAssignedTeacher !== true && auth.view === 'dashboard') {
+      setShowInviteModal(true);
+    }
+  }, [auth?.session, inviteToken, auth?.hasAssignedTeacher, auth?.view, isFetchingTeacher, inviteTeacherName]);
+
+  return (
+    <AppContent
+      inviteToken={inviteToken}
+      inviteTeacherNameProp={inviteTeacherName}
+      isFetchingTeacher={isFetchingTeacher}
+      showInviteModal={showInviteModal}
+      setShowInviteModal={setShowInviteModal}
+      clearStoredInviteToken={invite.clearStoredInviteToken}
+    />
   );
 }
 
@@ -179,7 +286,7 @@ export default function App() {
   return (
     <AuthProvider>
       <UserProvider>
-        <AppContent />
+        <AppRoot />
       </UserProvider>
     </AuthProvider>
   );

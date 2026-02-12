@@ -58,7 +58,7 @@ export default function SettingsView() {
         const userId = sessionData?.session?.user?.id;
         if (userId) {
           await supabase.from('profiles').upsert([{ id: userId, full_name: name || null }], { onConflict: 'id' });
-          await updateStudentData((auth.userName || '').toLowerCase(), { current_material_id: materialSpec.id, current_level: selectedLevel, lessons_per_week: lessonsPerWeek });
+          await updateStudentData((auth.userName || '').toLowerCase(), { current_lesson_track_id: materialSpec.id, current_level: selectedLevel, lessons_per_week: lessonsPerWeek });
         }
       } catch (e) {
         console.warn('Persistence to Supabase failed:', e?.message || e);

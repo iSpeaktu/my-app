@@ -27,7 +27,7 @@ export default function ObScreen3() {
             const userId = auth?.session?.user?.id || null;
             if (userId) {
               await updateStudentData(userId, {
-                current_material_id: finalOb.material?.id || null,
+                current_lesson_track_id: finalOb.material?.id || null,
                 current_level: finalOb.level || null,
                 lessons_per_week: finalOb.lessonsPerWeek || null
               });

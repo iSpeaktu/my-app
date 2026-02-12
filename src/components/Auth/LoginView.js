@@ -1,5 +1,6 @@
 // Extracted from App.js - LoginView component (original lines 1373-1556)
 import React from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../common/Icon';
 import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
@@ -42,11 +43,7 @@ export default function LoginView() {
           {loginNotice}
         </div>
       )}
-      {inviteTeacherName && (
-        <div className="bg-[#00F2FF10] border border-[#00F2FF40] text-white px-4 py-3 rounded-lg text-sm font-semibold">
-          Joining teacher <span className="text-[#00F2FF]">{inviteTeacherName}</span>
-        </div>
-      )}
+      {/* invite popup rendered via portal below to avoid being affected by parent transforms/animations */}
 
       {/* Full name removed from login form: signup will prompt for name separately */}
 
@@ -228,3 +225,16 @@ export default function LoginView() {
   </div>
   );
 }
+
+// Render invite popup as a portal so it's not affected by parent transforms/animations
+function InvitePortal({ name }) {
+  if (!name || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-[#00F2FF10] border border-[#00F2FF40] text-white px-4 py-3 rounded-lg text-sm font-semibold shadow-lg">
+      Joining teacher <span className="text-[#00F2FF]">{name}</span>
+    </div>,
+    document.body
+  );
+}
+
+// export default remains above

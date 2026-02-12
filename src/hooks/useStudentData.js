@@ -120,7 +120,7 @@ export const useStudentData = (view, selection) => {
     }
 
     // --- RESOLVE MATERIAL AND LEVEL FROM DATABASE ---
-    const rawMaterialId = student?.current_material_id || null;
+    const rawMaterialId = student?.current_lesson_track_id || null;
     const materialFromDb = rawMaterialId
       ? (MATERIALS_DATA.find(m => m.id === rawMaterialId) ||
          MATERIALS_DATA.find(m => m.title.toLowerCase() === String(rawMaterialId).toLowerCase()) ||
