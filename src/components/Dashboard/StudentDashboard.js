@@ -1,7 +1,8 @@
 // Extracted from App.js - Dashboard component (original lines 689-802)
 import React, { useEffect, useState } from 'react';
 import { ThumbsUp, Bell, ChevronRight, X } from 'lucide-react';
-import { Header, Card, Icon, LoadingSpinner } from '../common';
+import { Header, Card, Icon } from '../common';
+import CenteredLoader from '../common/CenteredLoader';
 import { useMaterials } from '../../hooks/useMaterials';
 import { useNotifications } from '../../hooks/useNotifications';
 import { supabase, deleteNotification, getNotifications } from '../../config/supabase';
@@ -114,40 +115,7 @@ export default function StudentDashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materials?.length, onboardingData?.material, storedSelection?.material]);
 
-  // Typing effect for loader caption
-  const typingFull = 'Hiya! we are getting your practice ready!';
-  const [typedCaption, setTypedCaption] = useState('');
-  const [cursorVisible, setCursorVisible] = useState(true);
-  useEffect(() => {
-    let mounted = true;
-    let idx = 0;
-    let charTimer = null;
-    let cursorTimer = null;
-    if (showLoader) {
-      // start typing
-      charTimer = setInterval(() => {
-        if (!mounted) return;
-        idx += 1;
-        setTypedCaption(typingFull.slice(0, idx));
-        if (idx >= typingFull.length) {
-          clearInterval(charTimer);
-        }
-      }, 80);
-      cursorTimer = setInterval(() => {
-        if (!mounted) return;
-        setCursorVisible(v => !v);
-      }, 500);
-    } else {
-      setTypedCaption('');
-      setCursorVisible(true);
-    }
-    return () => {
-      mounted = false;
-      try { if (charTimer) clearInterval(charTimer); } catch (e) {}
-      try { if (cursorTimer) clearInterval(cursorTimer); } catch (e) {}
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLoader]);
+  
 
   // Normalize current material id for comparisons (onboardingData.material may be an id or object)
   const currentMaterialId = resolvedDisplayMaterial?.id || (onboardingData?.material && (typeof onboardingData.material === 'object' ? onboardingData.material.id : onboardingData.material)) || storedMaterialId || null;
@@ -207,17 +175,7 @@ export default function StudentDashboard() {
 
   if (showLoader) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center px-6">
-          <LoadingSpinner />
-          <div className="text-white/80 text-sm font-semibold mt-3">
-            <span>{typedCaption}</span>
-            <span className={`ml-1 inline-block w-2 ${cursorVisible ? 'opacity-100' : 'opacity-0'}`}>
-              |
-            </span>
-          </div>
-        </div>
-      </div>
+      <CenteredLoader typingText="Hiya! we are getting your practice ready!" />
     );
   }
 
