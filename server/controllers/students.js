@@ -1,4 +1,4 @@
-const { supabase } = require('../supabaseClient');
+const { adminSupabase } = require('../supabaseClient');
 
 // Helper to compute XP for all lessons for a student (simple first-pass algorithm)
 function computeTotalXPFromHistory(history) {
@@ -113,11 +113,11 @@ exports.recordHistory = async (req, res) => {
       passed: !!passed,
       failures: Array.isArray(failures) ? failures : []
     };
-    const { error: insertErr } = await supabase.from('lesson_history').insert([payload]);
+    const { error: insertErr } = await adminSupabase.from('lesson_history').insert([payload]);
     if (insertErr) throw insertErr;
 
     // Recompute total XP from history and update student row
-    const { data: historyRows, error: histErr } = await supabase.from('lesson_history').select('*').eq('student_id', studentId);
+    const { data: historyRows, error: histErr } = await adminSupabase.from('lesson_history').select('*').eq('student_id', studentId);
     if (histErr) throw histErr;
     const totalXp = computeTotalXPFromHistory(historyRows || []);
 
@@ -130,7 +130,7 @@ exports.recordHistory = async (req, res) => {
     }
 
     // Update student row with new xp and perfect streak
-    const { data: updatedStudent, error: updErr } = await supabase.from('students').update({ xp: totalXp, perfect_streak: perfectStreak }).eq('id', studentId).select().maybeSingle();
+    const { data: updatedStudent, error: updErr } = await adminSupabase.from('students').update({ xp: totalXp, perfect_streak: perfectStreak }).eq('id', studentId).select().maybeSingle();
     if (updErr) throw updErr;
 
     return res.json({ success: true, xp: totalXp, perfect_streak: perfectStreak, student: updatedStudent });
