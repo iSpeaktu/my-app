@@ -20,12 +20,20 @@ export default function SelectLessonView(props) {
   const level = selection?.level || null;
 
   const { materials: dbMaterials } = useMaterials();
+
   // Hook state must be declared unconditionally at top-level of the component
   const [showStartCard, setShowStartCard] = useState(false);
   const [activeLessonData, setActiveLessonData] = useState(null);
   const [pressedLesson, setPressedLesson] = useState(null);
 
-  const dbSelection = { material: selection.material, level: selection.level, lessonNumber: activeLessonData?.lessonNumber };
+  // Resolve selection.material to a full material object when only an id was stored
+  const sourceMaterials = dbMaterials || [];
+  const materialSpec = (material && typeof material === 'object')
+    ? material
+    : sourceMaterials.find(m => String(m.id) === String(material)) || null;
+
+  // Prepare selection for DB hook: ensure at least an { id } is passed
+  const dbSelection = { material: materialSpec ? materialSpec : (typeof material === 'number' || typeof material === 'string' ? { id: material } : null), level: selection.level, lessonNumber: activeLessonData?.lessonNumber };
   const { content: lessonContent } = useLessonContent(dbSelection);
 
   // Gatekeeper: don't render Learning Path until DB materials are available
@@ -39,8 +47,9 @@ export default function SelectLessonView(props) {
       </div>
     );
   }
-  const sourceMaterials = dbMaterials;
-  const materialSpec = material || sourceMaterials.find(m => m.id === selection?.material?.id) || null;
+
+  const materialId = materialSpec?.id || material;
+  const historyForMaterialLevel = streakState.completedHistory.filter(h => String(h.material) === String(materialId) && h.level === selection.level);
 
   if (!materialSpec || !level) {
     return (
@@ -53,9 +62,7 @@ export default function SelectLessonView(props) {
 
   const lessonNumbers = [1,2,3,4,5,6,7,8];
 
-  const historyForMaterialLevel = streakState.completedHistory.filter(h => h.material === selection.material?.id && h.level === selection.level);
   const maxCompleted = historyForMaterialLevel.filter(h => h.passed).reduce((max, h) => Math.max(max, h.lessonId), 0);
-
 
   const handleClick = (num, isFuture, isCurrent, e, passed = false) => {
     // If locked future lesson, ignore clicks
@@ -73,7 +80,7 @@ export default function SelectLessonView(props) {
     setShowStartCard(false);
     setActiveLessonData(null);
     if (typeof num !== 'number') return;
-    setSelection({ ...selection, lessonNumber: num });
+    setSelection({ ...selection, material: materialSpec || selection.material, lessonNumber: num });
     if (typeof setQuizState === 'function') {
       setQuizState({ currentQuestionIndex: 0, isAnswered: false, selectedOption: null, score: 0, history: [] });
     }
@@ -82,7 +89,7 @@ export default function SelectLessonView(props) {
 
   return (
     <div className="max-w-md mx-auto py-8 px-6 min-h-screen">
-      <Header title="Learning Path" subtitle={`${selection.material?.title} • ${selection.level}`} showBack onBack={() => setView('dashboard')} showStreak streakState={streakState} />
+      <Header title="Learning Path" subtitle={`${materialSpec?.title || String(selection.material) || ''} • ${selection.level || ''}`} showBack onBack={() => setView('dashboard')} showStreak streakState={streakState} />
 
       <div onClick={() => { setShowStartCard(false); setActiveLessonData(null); }} className="relative flex flex-col items-center pb-40 space-y-24">
         {/* Central Vertical Line */}
