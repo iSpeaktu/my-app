@@ -3,21 +3,27 @@ const { supabase } = require('../supabaseClient');
 // Simple middleware: if Authorization header provided, verify token and attach user
 async function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization || req.headers.Authorization;
-  if (!authHeader) return next();
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: 'Authorization header required' });
+  }
   const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') return next();
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    return res.status(401).json({ success: false, error: 'Invalid Authorization header format' });
+  }
   const token = parts[1];
   try {
     const { data, error } = await supabase.auth.getUser(token);
     if (error) {
       console.warn('Supabase getUser error', error);
-      return next();
+      return res.status(401).json({ success: false, error: 'Invalid token' });
     }
     req.user = data?.user || null;
+    if (!req.user) return res.status(401).json({ success: false, error: 'Invalid token' });
+    return next();
   } catch (err) {
     console.warn('Failed to verify token', err);
+    return res.status(401).json({ success: false, error: 'Token verification failed' });
   }
-  return next();
 }
 
 // Require that `req.user` exists (i.e. token was valid)

@@ -6,6 +6,7 @@ const materials = require('../controllers/materials');
 const students = require('../controllers/students');
 const teachers = require('../controllers/teachers');
 const notifications = require('../controllers/notifications');
+const { verifyToken, requireAuth, requireOwnerOrTeacher } = require('../middleware/auth');
 
 // Auth
 router.post('/auth/student/login', auth.studentLogin);
@@ -18,21 +19,21 @@ router.get('/materials/:materialId/lesson', materials.getLessonByCompositeKey);
 router.get('/lessons/:lessonId/questions', materials.getLessonQuestions);
 
 // Students
-router.get('/students/:studentId/profile', students.getProfile);
-router.get('/students/:studentId/progress', students.getProgress);
-router.post('/students/:studentId/progress', students.updateProgress);
-router.get('/students/:studentId/history', students.getHistory);
-router.post('/students/:studentId/history', students.recordHistory);
-router.get('/students/:studentId/achievements', students.getAchievements);
+router.get('/students/:studentId/profile', verifyToken, requireOwnerOrTeacher('studentId'), students.getProfile);
+router.get('/students/:studentId/progress', verifyToken, requireOwnerOrTeacher('studentId'), students.getProgress);
+router.post('/students/:studentId/progress', verifyToken, requireOwnerOrTeacher('studentId'), students.updateProgress);
+router.get('/students/:studentId/history', verifyToken, requireOwnerOrTeacher('studentId'), students.getHistory);
+router.post('/students/:studentId/history', verifyToken, requireOwnerOrTeacher('studentId'), students.recordHistory);
+router.get('/students/:studentId/achievements', verifyToken, requireOwnerOrTeacher('studentId'), students.getAchievements);
 
 // Teachers
-router.get('/teachers/:teacherId/roster', teachers.getRoster);
-router.post('/teachers/:teacherId/invite', teachers.createInvite);
-router.post('/invites/redeem', teachers.redeemInvite);
+router.get('/teachers/:teacherId/roster', verifyToken, requireOwnerOrTeacher('teacherId'), teachers.getRoster);
+router.post('/teachers/:teacherId/invite', verifyToken, requireOwnerOrTeacher('teacherId'), teachers.createInvite);
+router.post('/invites/redeem', verifyToken, requireAuth, teachers.redeemInvite);
 
 // Notifications
-router.get('/users/:userId/notifications', notifications.getNotifications);
-router.post('/notifications', notifications.createNotification);
-router.delete('/notifications/:id', notifications.deleteNotification);
+router.get('/users/:userId/notifications', verifyToken, requireOwnerOrTeacher('userId'), notifications.getNotifications);
+router.post('/notifications', verifyToken, requireAuth, notifications.createNotification);
+router.delete('/notifications/:id', verifyToken, requireAuth, notifications.deleteNotification);
 
 module.exports = router;
