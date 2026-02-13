@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, HAS_SUPABASE } from '../config/supabase';
-import { MATERIALS_DATA } from '../constants/materials';
+// NOTE: Removed embedded MATERIALS_DATA fallback to enforce DB-only sourcing
 
 export const useMaterials = () => {
   const [materials, setMaterials] = useState([]);
@@ -12,8 +12,8 @@ export const useMaterials = () => {
     const MISSING_FLAG = 'ispeaktu_lesson_tracks_missing';
     // If we've previously observed the table missing, skip the fetch to avoid noisy 404s
     if (!HAS_SUPABASE || localStorage.getItem(MISSING_FLAG) === '1') {
-      // Fall back to embedded materials to keep UI usable
-      setMaterials(MATERIALS_DATA);
+      // If Supabase isn't available or the table was marked missing, keep materials empty
+      setMaterials([]);
       setLoading(false);
       return () => { active = false; };
     }
@@ -59,7 +59,8 @@ export const useMaterials = () => {
           if (!active) return;
           console.error('Failed to load lesson_tracks from Supabase:', e);
           setError(e?.message || 'Failed to load materials');
-          setMaterials(MATERIALS_DATA);
+          // Do not fall back to embedded data; keep materials empty to enforce DB-only sourcing
+          setMaterials([]);
       } finally {
         if (active) setLoading(false);
       }

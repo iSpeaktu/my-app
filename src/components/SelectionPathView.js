@@ -3,6 +3,7 @@ import React from 'react';
 import { Header, Card, Icon } from './common';
 import { useAuthContext } from '../context/AuthContext';
 import { useUserContext } from '../context/UserContext';
+import { useMaterials } from '../hooks/useMaterials';
 
 /**
  * SelectionPathView - Level selection interface
@@ -21,6 +22,16 @@ export default function SelectionPathView(props) {
   const selection = props.selection || user.selection;
   const setSelection = props.setSelection || user.setSelection;
   const setView = props.setView || auth.setView;
+
+  const { materials: dbMaterials } = useMaterials();
+  if (!dbMaterials || dbMaterials.length === 0) {
+    return (
+      <div className="max-w-md mx-auto py-8 px-6 min-h-screen">
+        <Header title="Choose Level" subtitle="Loading tracks..." showBack onBack={() => setView('dashboard')} />
+        <div className="mt-6 p-4 bg-[#16161D] border border-[#2D2D3A] rounded-lg text-white/70">Loading tracks from the server — please wait.</div>
+      </div>
+    );
+  }
 
   // Guard: if no material selected, show a helpful message
   if (!selection || !selection.material) {

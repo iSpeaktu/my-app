@@ -18,7 +18,6 @@ import {
 import { Header, Icon, Card } from '../common';
 import ProgressCard from './ProgressCard';
 import { supabase, getTeacherNameByUserId, upsertAchievement } from '../../config/supabase';
-import { MATERIALS_DATA } from '../../constants/materials';
 import { useMaterials } from '../../hooks/useMaterials';
 
 /**
@@ -55,7 +54,8 @@ export default function ProgressView({
 
   // Resolve material spec for the onboardingData; onboardingData.material may be an id or an object.
   const { materials: dbMaterials } = useMaterials();
-  const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
+  // Enforce DB-only sourcing: use dbMaterials (may be empty array while loading)
+  const materials = dbMaterials || [];
   const resolveMaterial = (m) => {
     if (!m) return null;
     if (typeof m === 'string' || typeof m === 'number') {
@@ -191,7 +191,7 @@ export default function ProgressView({
 
       <div className="grid grid-cols-2 gap-4 mb-8">
          <ProgressCard label="Lessons Passed" value={uniquePassedCount} color="#00F2FF" />
-         <ProgressCard label="Perfect Streak" value={maxPerfectStreak} color="#7000FF" />
+         <ProgressCard label="Perfect Streak" value={maxPerfectStreak} color="#00F2FF" />
       </div>
 
 

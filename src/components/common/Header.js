@@ -1,7 +1,7 @@
 // Extracted from App.js - Header component (original lines 645-685)
 import React from 'react';
 import { useUserContext } from '../../context/UserContext';
-import { ChevronLeft, User, Star, Flame } from 'lucide-react';
+import { ChevronLeft, User, Star, Flame, Zap } from 'lucide-react';
 import Icon from './Icon';
 
 /**
@@ -38,7 +38,7 @@ export default function Header({
       <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-md bg-white/5 border border-[#2D2D3A]">
         <div />
 
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 rounded-full border border-[#2D2D3A]">
             <Star size={14} className="text-[#7000FF]" fill="currentColor" />
             <span className="text-sm font-bold text-[#7000FF]">{totalXP} XP</span>
@@ -46,12 +46,12 @@ export default function Header({
           {showStreak && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 rounded-full border border-[#2D2D3A]">
               <Flame size={14} className="text-[#FFD700]" fill="currentColor" />
-              <span className="text-sm font-bold text-white">{streakStateSafe.weeklyStreak}</span>
+              <span className="text-sm font-bold text-[#FFD700]">{streakStateSafe.weeklyStreak}</span>
             </div>
           )}
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 rounded-full border border-[#2D2D3A]">
-            <Flame size={14} className="text-[#FFD700]" fill="currentColor" />
-            <span className="text-sm font-bold text-white">{perfectStreak}</span>
+            <Zap size={14} className="text-[#00F2FF]" fill="currentColor" />
+            <span className="text-sm font-bold text-[#00F2FF]">{perfectStreak}</span>
           </div>
         </div>
       </div>

@@ -6,9 +6,12 @@ import {
   Search,
   BarChart3,
   AlertTriangle,
+  Star,
+  Zap,
+  Flame,
 } from 'lucide-react';
 import { Icon } from './common';
-import { MATERIALS_DATA } from '../constants/materials';
+import { useMaterials } from '../hooks/useMaterials';
 import { supabase, getTeacherStudents, createNotification, createTeacherInvite } from '../config/supabase';
 
 /**
@@ -30,14 +33,37 @@ export default function TutorDashboard({ onLogout }) {
   const [reminders, setReminders] = useState({});
   const [praises, setPraises] = useState({});
   const [lastSeenMap, setLastSeenMap] = useState({});
+  const [popupBubbles, setPopupBubbles] = useState({});
   const tutorIdRef = useRef(null);
+  const prevStudentsRef = useRef({});
+  const bubbleTimersRef = useRef({});
+  const studentCardRefs = useRef({});
+  const directoryRef = useRef(null);
+  const [bubblePositions, setBubblePositions] = useState({});
+  const [hoveredStudent, setHoveredStudent] = useState(null);
 
-  const getTrackLabel = (materialId) => {
-      const m = MATERIALS_DATA.find(x => x.id === materialId);
-      return m?.title || 'Track';
-  };
+  const { materials: dbMaterials } = useMaterials();
 
   const getLessonKey = (studentId, lessonId, type) => `${studentId || ''}_${lessonId || ''}_${type || ''}`;
+
+    // Count of students needing attention (no reminder/praise for last lesson)
+    const needsAttentionCount = (students || []).reduce((acc, s) => {
+      const last = (s.history && s.history.length) ? s.history[s.history.length - 1] : null;
+      const lastLessonId = last?.lessonId ?? s.lastLessonId ?? null;
+      const lastScore = (typeof last?.score === 'number') ? last.score : (typeof s.lastScore === 'number' ? s.lastScore : 0);
+      if (!lastLessonId) return acc;
+      const reminderKey = getLessonKey(s.id, lastLessonId, 'reminder');
+      const praiseKey = getLessonKey(s.id, lastLessonId, 'praise');
+      const hasReminder = !!reminders[reminderKey];
+      const hasPraise = !!praises[praiseKey];
+      if ((lastScore < 70 && !hasReminder) || (lastScore === 100 && !hasPraise)) return acc + 1;
+      return acc;
+  }, 0);
+
+    const getTrackLabel = (materialId) => {
+      const m = (dbMaterials || []).find(x => x.id === materialId);
+      return m?.title || 'Track';
+    };
   const getLocalSentMap = (key) => {
       try {
           return JSON.parse(localStorage.getItem(key) || '{}');
@@ -67,6 +93,44 @@ export default function TutorDashboard({ onLogout }) {
       const fetchStudents = async () => {
           const list = await getTeacherStudents();
           if (active) setStudents(list);
+          // detect newly completed lessons since last poll and show popups
+          try {
+            if (active && prevStudentsRef.current && Object.keys(prevStudentsRef.current).length > 0) {
+              const newBubbles = {};
+              (list || []).forEach(s => {
+                const prev = prevStudentsRef.current[s.id];
+                const prevLastObj = prev && prev.history && prev.history.length ? prev.history[prev.history.length - 1] : null;
+                const newLastObj = s && s.history && s.history.length ? s.history[s.history.length - 1] : null;
+                const prevLastDate = prevLastObj?.date || null;
+                const newLastDate = newLastObj?.date || null;
+                const newLastLessonId = newLastObj?.lessonId || null;
+                if (prevLastDate && newLastDate && new Date(newLastDate) > new Date(prevLastDate)) {
+                  // skip bubble if teacher already sent feedback for that lesson
+                  const reminderKey = newLastLessonId ? getLessonKey(s.id, newLastLessonId, 'reminder') : null;
+                  const praiseKey = newLastLessonId ? getLessonKey(s.id, newLastLessonId, 'praise') : null;
+                  const hasReminder = reminderKey ? !!reminders[reminderKey] : false;
+                  const hasPraise = praiseKey ? !!praises[praiseKey] : false;
+                  if (hasReminder || hasPraise) return;
+                  newBubbles[s.id] = true;
+                  // schedule hide
+                  const t = setTimeout(() => {
+                    setPopupBubbles(prev => {
+                      const next = { ...(prev || {}) };
+                      delete next[s.id];
+                      return next;
+                    });
+                    try { delete bubbleTimersRef.current[s.id]; } catch (e) {}
+                  }, 4000);
+                  bubbleTimersRef.current[s.id] = t;
+                }
+              });
+              if (Object.keys(newBubbles).length) {
+                setPopupBubbles(prev => ({ ...(prev || {}), ...newBubbles }));
+              }
+            }
+          } catch (err) { console.error('popup detection error', err); }
+          // remember current list for next poll
+          prevStudentsRef.current = (list || []).reduce((acc, s) => { acc[s.id] = s; return acc; }, {});
           const currentTeacherId = tutorIdRef.current;
           if (active && currentTeacherId) {
               const key = getLastSeenKey(currentTeacherId);
@@ -153,8 +217,35 @@ export default function TutorDashboard({ onLogout }) {
       return () => {
           active = false;
           if (pollId) clearInterval(pollId);
+          // clear pending bubble timers
+          try {
+            Object.values(bubbleTimersRef.current || {}).forEach(t => clearTimeout(t));
+            bubbleTimersRef.current = {};
+          } catch (e) {}
       };
   }, []);
+
+  useEffect(() => {
+    const computePositions = () => {
+      try {
+        const dir = directoryRef.current;
+        if (!dir) return;
+        const dirRect = dir.getBoundingClientRect();
+        const next = {};
+        const activeIds = new Set([...(Object.keys(popupBubbles || {}).filter(k => popupBubbles[k])), ...(hoveredStudent ? [hoveredStudent] : [])]);
+        activeIds.forEach(id => {
+          const el = studentCardRefs.current[id];
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          next[id] = { left: r.right - dirRect.left + 8, top: r.top - dirRect.top - 10 };
+        });
+        setBubblePositions(next);
+      } catch (e) {}
+    };
+    computePositions();
+    window.addEventListener('resize', computePositions);
+    return () => window.removeEventListener('resize', computePositions);
+  }, [popupBubbles, hoveredStudent, students]);
   
   const filteredStudents = students.filter(s =>
       s.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -174,6 +265,8 @@ export default function TutorDashboard({ onLogout }) {
           const next = { ...reminders, [getLessonKey(s.id, lessonId, 'reminder')]: true };
           setReminders(next);
           setLocalSentMap(reminderKey, next);
+          // remove any popup bubble if teacher sent feedback
+          try { setPopupBubbles(prev => { const n = { ...(prev||{}) }; delete n[s.id]; return n; }); } catch (e) {}
       } catch (err) {
           console.error('Failed to send reminder:', err);
       }
@@ -190,6 +283,8 @@ export default function TutorDashboard({ onLogout }) {
           const next = { ...praises, [getLessonKey(s.id, lessonId, 'praise')]: true };
           setPraises(next);
           setLocalSentMap(praiseKey, next);
+          // remove any popup bubble if teacher sent feedback
+          try { setPopupBubbles(prev => { const n = { ...(prev||{}) }; delete n[s.id]; return n; }); } catch (e) {}
       } catch (err) {
           console.error('Failed to send praise:', err);
       }
@@ -255,6 +350,20 @@ export default function TutorDashboard({ onLogout }) {
                       </p>
                   </div>
               </div>
+                  <div className="flex items-center gap-2 mb-4">
+                      <div className="px-3 py-1 rounded-lg bg-white/5 border border-[#2D2D3A] text-[11px] font-bold text-[#7000FF] flex items-center gap-2">
+                        <Star size={16} className="text-[#7000FF]" fill="currentColor" />
+                        <span>{selectedStudent.xp || 0}</span>
+                      </div>
+                      <div className="px-3 py-1 rounded-lg bg-white/5 border border-[#2D2D3A] text-[11px] font-bold text-[#FFD700] flex items-center gap-2">
+                        <Flame size={16} className="text-[#FFD700]" fill="currentColor" />
+                        <span>{selectedStudent.weeklyStreak || 0}</span>
+                      </div>
+                      <div className="px-3 py-1 rounded-lg bg-white/5 border border-[#2D2D3A] text-[11px] font-bold text-[#00F2FF] flex items-center gap-2">
+                        <Zap size={16} className="text-[#00F2FF]" fill="currentColor" />
+                        <span>{selectedStudent.perfectStreak || 0}</span>
+                      </div>
+                  </div>
               
               <div className="space-y-4 mt-6 border-t border-[#2D2D3A] pt-6">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-2 flex items-center gap-2">
@@ -324,24 +433,41 @@ export default function TutorDashboard({ onLogout }) {
                                       <div className="text-[10px] font-black text-white/30 uppercase tracking-tighter mb-1">
                                           {new Date(h.date).toLocaleDateString()} • {new Date(h.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                       </div>
-                                      <div className="font-bold text-white leading-none">Lesson {h.lessonId}</div>
-                                      <div className="text-[9px] text-[#00F2FF] font-black uppercase tracking-widest mt-1.5">{h.material} • {h.level}</div>
+                                      {(() => {
+                                        // Use lesson_title from DB if present, then fallback to lessonTitle, then material
+                                        const lessonTitleDisplay = h.lesson_title || h.lessonTitle || h.material || '';
+                                        const isPerfectScore = Number(h.score) === 100;
+                                        return (
+                                          <>
+                                            <div className="font-bold text-white leading-none">Lesson {h.lessonId}{lessonTitleDisplay ? `: ${lessonTitleDisplay}` : ''}</div>
+                                          </>
+                                        );
+                                      })()}
+                                      <div className="text-[9px] text-[#00F2FF] font-black uppercase tracking-widest mt-1.5">
+                                        {getTrackLabel(h.lesson_track_id || h.lessonTrackId || h.material || selectedStudent.lastMaterialId)} • {h.level}
+                                      </div>
                                   </div>
                                   <div className="flex flex-col items-end">
-                                      <div className={`text-2xl font-black ${h.passed ? 'text-[#00FF94]' : 'text-[#FF2E63]'}`}>{h.score}%</div>
+                                      <div className={`text-2xl font-black ${Number(h.score) === 100 ? 'text-[#BF40FF]' : (h.passed ? 'text-[#00FF94]' : 'text-[#FF2E63]')}`}>{h.score}%</div>
                                       <div className={`text-[8px] font-black uppercase tracking-widest ${h.passed ? 'text-[#00FF9440]' : 'text-[#FF2E6340]'}`}>
                                           {h.passed ? 'Passed' : 'Needs Review'}
                                       </div>
                                       <div className="mt-3">
                                         {h.passed ? (
-                                          <button
-                                            onClick={(e) => handlePraise(e, selectedStudent, h.lessonId)}
-                                            aria-label={`Send praise for lesson ${h.lessonId}`}
-                                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${praiseSent ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95 focus:ring-[#00FF94]'}`}
-                                          >
-                                            <Icon name="ThumbsUp" size={10} />
-                                            {praiseSent ? 'Sent' : 'Thumbs Up'}
-                                          </button>
+                                          (() => {
+                                            const isPerfectScore = Number(h.score) === 100;
+                                            const baseClass = praiseSent ? 'bg-[#2D2D3A] text-white/20 focus:ring-[#2D2D3A]' : (isPerfectScore ? 'bg-[#BF40FF] text-white shadow-[0_0_20px_rgba(191,64,255,0.7)] border border-[#DF80FF]' : 'bg-[#00FF94] text-[#0A0A0C] hover:brightness-110 active:scale-95 focus:ring-[#00FF94]');
+                                            return (
+                                              <button
+                                                onClick={(e) => handlePraise(e, selectedStudent, h.lessonId)}
+                                                aria-label={`Send praise for lesson ${h.lessonId}`}
+                                                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-1 ${baseClass}`}
+                                              >
+                                                <Icon name="ThumbsUp" size={10} />
+                                                {praiseSent ? 'Sent' : 'Thumbs Up'}
+                                              </button>
+                                            );
+                                          })()
                                         ) : (
                                           <button
                                             onClick={(e) => handleRemind(e, selectedStudent, h.lessonId)}
@@ -474,18 +600,18 @@ export default function TutorDashboard({ onLogout }) {
       <div className="grid grid-cols-2 gap-4 mb-10">
           <div className="bg-[#16161D] p-5 rounded-2xl border border-[#2D2D3A] relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-0.5 bg-[#00F2FF40]" />
-              <div className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-1">Total Enrolled</div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-1">Total students</div>
               <div className="text-4xl font-black text-white">{students.length}</div>
           </div>
-          <div className="bg-[#16161D] p-5 rounded-2xl border border-[#2D2D3A] relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-0.5 bg-[#FF2E6340]" />
-              <div className="text-[10px] font-black uppercase tracking-widest text-[#FF2E63] mb-1">Feedback Sent</div>
-              <div className="text-4xl font-black text-white">{Object.keys(reminders).length + Object.keys(praises).length}</div>
-          </div>
+            <div className="bg-[#16161D] p-5 rounded-2xl border border-[#2D2D3A] relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-[#7000FF] to-[#9B7CFF]" />
+              <div className="text-[10px] font-black uppercase tracking-widest text-[#7000FF] mb-1">Priority Tasks</div>
+              <div className="text-4xl font-black text-white">{needsAttentionCount}</div>
+            </div>
       </div>
 
       <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4 px-2">Student Directory</h4>
-      <div className="space-y-3">
+      <div ref={directoryRef} className="space-y-3 relative">
           {filteredStudents.length === 0 ? (
               <div className="text-center opacity-20 py-20 border-2 border-dashed border-[#2D2D3A] rounded-3xl">
                   <Search size={48} className="mx-auto mb-4 opacity-10" />
@@ -539,7 +665,7 @@ export default function TutorDashboard({ onLogout }) {
                       role="button"
                       tabIndex={0}
                       aria-label={`View details for student ${s.name}, ${s.progress} level, ${s.lastScore}% score`}
-                      className="bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-[#00F2FF40] hover:bg-[#1C1C26] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all active:scale-[0.99] group"
+                          className="relative bg-[#16161D] border border-[#2D2D3A] p-5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-[#00F2FF40] hover:bg-[#1C1C26] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all active:scale-[0.99] group"
                   >
                       <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-xl bg-[#0A0A0C] border border-[#2D2D3A] flex items-center justify-center overflow-hidden text-white/20 group-hover:text-[#00F2FF] group-hover:border-[#00F2FF20] transition-all">
@@ -556,9 +682,15 @@ export default function TutorDashboard({ onLogout }) {
                               </div>
                           </div>
                       </div>
+                      {/* popup handled as overlay outside the card */}
                       
-                      <div className="flex flex-col items-end gap-2">
-                          <div className="text-[9px] font-black uppercase tracking-widest text-white/40">{quizCount} Quiz{quizCount === 1 ? '' : 'zes'} Taken</div>
+                      <div
+                        ref={(el) => { try { if (el) studentCardRefs.current[s.id] = el; else delete studentCardRefs.current[s.id]; } catch (e) {} }}
+                        onMouseEnter={() => setHoveredStudent(s.id)}
+                        onMouseLeave={() => setHoveredStudent(null)}
+                        className="flex flex-col items-end gap-2"
+                      >
+                            <div className="text-[9px] font-black uppercase tracking-widest text-white/40">{quizCount} Quiz{quizCount === 1 ? '' : 'zes'} Taken</div>
                           {(() => {
                               const lastSeen = lastSeenMap[s.id];
                               // Count only lessons whose first-ever attempt occurred after lastSeen (ignore retakes)
@@ -594,6 +726,22 @@ export default function TutorDashboard({ onLogout }) {
                       </div>
                   </div>
               );
+          })}
+          {/* overlay bubbles positioned relative to directory */}
+          {Object.keys(bubblePositions || {}).map(id => {
+            const pos = bubblePositions[id];
+            if (!pos) return null;
+            const visible = !!popupBubbles[id] || hoveredStudent === id;
+            return (
+              <div key={`bubble-${id}`} style={{ position: 'absolute', left: pos.left, top: pos.top, zIndex: 40, pointerEvents: 'none', opacity: visible ? 1 : 0, transform: visible ? 'scale(1)' : 'scale(0.95)', transition: 'opacity 200ms, transform 200ms' }}>
+                <div className="relative">
+                  <div className="bg-[#7000FF] text-white text-[11px] font-black px-3 py-2 rounded-xl shadow-lg whitespace-nowrap">
+                    New lesson!
+                  </div>
+                  <div className="absolute left-1/2 -bottom-1 transform -translate-x-1/2 w-0 h-0 border-l-6 border-r-6 border-t-6 border-l-transparent border-r-transparent border-t-[#7000FF]" />
+                </div>
+              </div>
+            );
           })}
       </div>
     </div>

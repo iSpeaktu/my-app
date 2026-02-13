@@ -1,7 +1,6 @@
 // Extracted from App.js - Student data and progress hook (original lines 187-430)
 import { useState, useEffect } from 'react';
 import { getProfile, getStudentProgress, getStudentLessonHistory, getNotifications, getAchievements, upsertProfile, updateStudentProgress, cleanupLessonHistoryLatest, getTeacherNameByUserId, supabase } from '../config/supabase';
-import { MATERIALS_DATA } from '../constants/materials';
 import { getStoredInviteToken, clearInviteToken, clearStoredInviteToken, getWeekStartISO } from '../utils/storage';
 import { getWeekStartISO as calculateWeekStart } from '../utils/dateUtils';
 
@@ -60,10 +59,7 @@ export const useStudentData = (view, selection) => {
 
   // --- REHYDRATE ONBOARDING DATA (original lines 256-262) ---
   const rehydrateOnboardingData = (data) => {
-    if (data && data.material && data.material.id) {
-      const fullMaterial = MATERIALS_DATA.find(m => m.id === data.material.id);
-      if (fullMaterial) return { ...data, material: fullMaterial };
-    }
+    // No embedded MATERIALS_DATA resolution; return data as-is.
     return data;
   };
 
@@ -125,13 +121,9 @@ export const useStudentData = (view, selection) => {
     }
 
     // --- RESOLVE MATERIAL AND LEVEL FROM DATABASE ---
-    const rawMaterialId = student?.current_lesson_track_id || null;
-    const materialFromDb = rawMaterialId
-      ? (MATERIALS_DATA.find(m => m.id === rawMaterialId) ||
-         MATERIALS_DATA.find(m => m.title.toLowerCase() === String(rawMaterialId).toLowerCase()) ||
-         MATERIALS_DATA.find(m => m.id === String(rawMaterialId).toLowerCase().trim()) ||
-         null)
-      : null;
+     const rawMaterialId = student?.current_lesson_track_id || null;
+     // Prefer DB-sourced onboarding; no in-memory MATERIALS_DATA mapping available here.
+     const materialFromDb = null;
     const levelFromDb = student?.current_level || null;
     const material = materialFromDb || onboardingData.material || null;
     const level = levelFromDb || onboardingData.level || null;

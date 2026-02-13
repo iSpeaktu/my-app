@@ -1,5 +1,5 @@
 // Extracted from App.js - Local storage utilities hook (original lines 207-255)
-import { MATERIALS_DATA } from '../constants/materials';
+// NOTE: Removed dependency on embedded MATERIALS_DATA. Stored selection returns IDs only.
 
 /**
  * useLocalStorage - Custom hook for managing persistent localStorage operations
@@ -37,9 +37,9 @@ export const useLocalStorage = () => {
       const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
-      const mat = parsed?.materialId ? MATERIALS_DATA.find(m => m.id === parsed.materialId) : null;
+      // Return the stored material id rather than resolving to an in-memory material object.
       return {
-        material: mat || null,
+        material: parsed?.materialId || null,
         level: parsed?.level || null,
         lessonNumber: parsed?.lessonNumber || null
       };

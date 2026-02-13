@@ -38,7 +38,7 @@ import { useInviteToken } from './hooks/useInviteToken';
 import { supabase, waitForAuthSession } from './config/supabase';
 
 // === CONSTANTS ===
-import { MATERIALS_DATA } from './constants';
+// NOTE: removed embedded MATERIALS_DATA; app sources materials from DB-only via hooks
 
 /**
  * AppContent: Main routing and view logic
@@ -152,7 +152,6 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
       {/* Invite modal rendering moved to end of JSX (see AppRoot) */}
 
       {/* VIEW ROUTING */}
-      {!appReady && <div className="flex items-center justify-center min-h-screen"><div className="text-center"><p className="text-white/70">Loading...</p></div></div>}
 
       {appReady && auth.view === 'login' && <LoginView />}
       {appReady && auth.view === 'signup' && <SignupView />}

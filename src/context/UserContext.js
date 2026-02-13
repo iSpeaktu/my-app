@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useRef } from 'react';
 import { useAuthContext } from './AuthContext';
-import { getStoredSelection } from '../utils/storage';
+import { getStoredSelection, setStoredSelection } from '../utils/storage';
 import { updateStudentData } from '../config/supabase';
 import { useStudentData } from '../hooks/useStudentData';
 import { useStreak } from '../hooks/useStreak';
@@ -107,7 +107,7 @@ export const UserProvider = ({ children }) => {
     // Persist locally immediately so cache is ready for next reload
     try {
       if (resolvedValue) {
-        localStorage.setItem('user_selection', JSON.stringify(resolvedValue));
+        setStoredSelection(resolvedValue);
       }
     } catch (e) {
       // ignore localStorage failures
@@ -150,6 +150,17 @@ export const UserProvider = ({ children }) => {
       }
     } catch (e) {}
   }, [onboardingData]);
+
+  // Ensure we persist the resolved onboarding selection into the shared selection key
+  // once initial onboarding restoration has completed. This guarantees the dashboard
+  // can read the stored selection immediately after login/refresh.
+  useEffect(() => {
+    try {
+      if (hasInitializedOnboarding && onboardingData && onboardingData.material) {
+        setStoredSelection({ material: onboardingData.material, level: onboardingData.level, lessonNumber: null });
+      }
+    } catch (e) {}
+  }, [hasInitializedOnboarding, onboardingData]);
   
   // Quiz state tracking (original line 207)
   const [quizState, setQuizState] = useState({ 

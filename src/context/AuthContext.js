@@ -142,6 +142,7 @@ export const AuthProvider = ({ children }) => {
         // If the view is invalid/undefined, pick a safe default based on session
         const safe = auth.session ? (auth.userRole === 'teacher' ? 'tutor_dashboard' : 'dashboard') : 'login';
         console.warn('AuthContext: normalizing invalid view ->', view, '=>', safe);
+        try { console.trace('AuthContext: view normalization stacktrace'); } catch (e) {}
         _setView(safe);
       }
     } catch (e) {

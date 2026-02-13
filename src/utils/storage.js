@@ -1,5 +1,5 @@
 // Extracted from App.js - localStorage utilities (original lines 209-260, 1177-1185)
-import { MATERIALS_DATA } from '../constants/materials';
+// NOTE: Removed MATERIALS_DATA dependency - storage functions now return IDs only.
 
 const VIEW_STORAGE_KEY = 'ispeaktu_last_view';
 const SELECTION_STORAGE_KEY = 'ispeaktu_last_selection';
@@ -39,9 +39,8 @@ export const getStoredSelection = () => {
     const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const mat = parsed?.materialId ? MATERIALS_DATA.find(m => m.id === parsed.materialId) : null;
     return {
-      material: mat || null,
+      material: parsed?.materialId || null,
       level: parsed?.level || null,
       lessonNumber: parsed?.lessonNumber || null
     };
@@ -133,9 +132,6 @@ export const clearInviteToken = () => {
  * @returns {Object} Rehydrated onboarding data
  */
 export const rehydrateOnboardingData = (data) => {
-  if (data && data.material && data.material.id) {
-    const fullMaterial = MATERIALS_DATA.find(m => m.id === data.material.id);
-    if (fullMaterial) return { ...data, material: fullMaterial };
-  }
+  // No in-memory MATERIALS_DATA resolution available; return data as-is.
   return data;
 };

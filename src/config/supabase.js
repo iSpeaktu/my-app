@@ -349,26 +349,38 @@ export const getTeacherRoster = async () => {
       .eq('teacher_id', userId);
     if (classroomErr) throw classroomErr;
 
+    // Debug: log classroomRows to help diagnose missing students
+    try { console.debug('[getTeacherRoster] classroomRows:', classroomRows); } catch (e) {}
+
     let studentIds = (classroomRows || []).map(r => r.student_id).filter(Boolean);
+    // Defensive sanitization: ensure ids are strings and strip any accidental suffixes (e.g. ":1")
+    studentIds = studentIds.map(id => typeof id === 'string' ? id.split(':')[0] : String(id)).filter(Boolean);
+    try { console.debug('[getTeacherRoster] initial studentIds:', studentIds); } catch (e) {}
     let students = null;
     if (studentIds.length === 0) {
       const { data: byTeacher, error: byTeacherErr } = await supabase
         .from('students')
-        .select('id, teacher_id, current_lesson_track_id, current_level, xp, weekly_streak')
+        .select('id, teacher_id, current_lesson_track_id, current_level, xp, weekly_streak, perfect_streak')
         .eq('teacher_id', userId);
       if (byTeacherErr) throw byTeacherErr;
       students = byTeacher || [];
       studentIds = students.map(s => s.id).filter(Boolean);
     } else {
+      // Defensive sanitization for ids coming from DB
+      studentIds = studentIds.map(id => typeof id === 'string' ? id.split(':')[0] : String(id)).filter(Boolean);
       const { data: byIds, error: studentsErr } = await supabase
         .from('students')
-        .select('id, teacher_id, current_lesson_track_id, current_level, xp, weekly_streak')
+        .select('id, teacher_id, current_lesson_track_id, current_level, xp, weekly_streak, perfect_streak')
         .in('id', studentIds);
       if (studentsErr) throw studentsErr;
       students = byIds || [];
+      try { console.debug('[getTeacherRoster] students byIds length:', students.length); } catch (e) {}
     }
 
-    if (studentIds.length === 0) return [];
+    if (studentIds.length === 0) {
+      try { console.debug('[getTeacherRoster] no studentIds found, returning empty roster'); } catch (e) {}
+      return [];
+    }
 
     const { data: profiles, error: profilesErr } = await supabase
       .from('profiles')
@@ -376,12 +388,44 @@ export const getTeacherRoster = async () => {
       .in('id', studentIds);
     if (profilesErr) throw profilesErr;
 
+    try { console.debug('[getTeacherRoster] profiles length:', (profiles || []).length); } catch (e) {}
+
     const { data: historyRows, error: historyErr } = await supabase
       .from('lesson_history')
       .select('student_id, lesson_id, score, passed, failures, created_at, lesson_track_id, level')
       .in('student_id', studentIds)
       .order('created_at', { ascending: true });
     if (historyErr) throw historyErr;
+
+    // Fetch lesson titles by matching (track_id, level, lesson_number).
+    // historyRows may store lesson_id as the lesson_number (not lessons.id), so we match by composite key.
+    const compositeKeys = (historyRows || []).map(h => ({
+      track_id: h.lesson_track_id || null,
+      level: h.level || null,
+      lesson_number: h.lesson_id || null,
+    })).filter(k => k.track_id && k.lesson_number !== null && k.lesson_number !== undefined);
+    const uniqueTrackIds = [...new Set(compositeKeys.map(k => k.track_id))];
+    const uniqueLessonNumbers = [...new Set(compositeKeys.map(k => k.lesson_number))];
+    let lessonTitleByComposite = new Map();
+    if (uniqueTrackIds.length > 0 && uniqueLessonNumbers.length > 0) {
+      const { data: lessonsData, error: lessonsErr } = await supabase
+        .from('lessons')
+        .select('id, track_id, level, lesson_number, title')
+        .in('track_id', uniqueTrackIds)
+        .in('lesson_number', uniqueLessonNumbers);
+      if (!lessonsErr && lessonsData) {
+        lessonsData.forEach(l => {
+          const key = `${l.track_id}__${l.level || ''}__${l.lesson_number}`;
+          lessonTitleByComposite.set(key, l.title);
+        });
+      }
+      // Attempt to backfill lesson_title for students where possible (do not block on failures)
+      try {
+        Promise.allSettled((studentIds || []).map(sid => backfillLessonTitlesForStudent(sid)));
+      } catch (e) {
+        console.debug('Non-fatal: backfill attempt failed to start', e);
+      }
+    }
 
     const profileById = new Map((profiles || []).map(p => [p.id, p]));
     const studentById = new Map((students || []).map(s => [s.id, s]));
@@ -399,14 +443,22 @@ export const getTeacherRoster = async () => {
       });
     });
 
-    return studentIds.map(id => {
+      return studentIds.map(id => {
       const profile = profileById.get(id) || {};
       const student = studentById.get(id) || {};
-      const history = (historyById.get(id) || []).map(h => ({
-        ...h,
-        material: h.materialId || student.current_lesson_track_id || null,
-        level: h.level || student.current_level || null
-      }));
+      const history = (historyById.get(id) || []).map(h => {
+        const material = h.materialId || student.current_lesson_track_id || null;
+        const level = h.level || student.current_level || null;
+        const compositeKey = `${material}__${level || ''}__${h.lessonId}`;
+        const lessonTitleResolved = lessonTitleByComposite.get(compositeKey) || null;
+        return {
+          ...h,
+          material,
+          level,
+          lessonTitle: lessonTitleResolved,
+          lesson_title: lessonTitleResolved
+        };
+      });
       const last = history.length ? history[history.length - 1] : null;
       const display = profile.full_name || profile.username || 'Student';
       return {
@@ -418,6 +470,9 @@ export const getTeacherRoster = async () => {
         lastLessonId: last?.lessonId || 1,
         lastMaterialId: student.current_lesson_track_id || null,
         lastLevel: student.current_level || null,
+        xp: typeof student.xp === 'number' ? student.xp : 0,
+        perfectStreak: typeof student.perfect_streak === 'number' ? student.perfect_streak : 0,
+        weeklyStreak: typeof student.weekly_streak === 'number' ? student.weekly_streak : 0,
         history,
         historyLoaded: true
       };
@@ -433,13 +488,49 @@ export const getStudentHistoryForTeacher = async (studentId) => {
     if (!studentId) return [];
     const { data: historyRows, error: historyErr } = await supabase
       .from('lesson_history')
-      .select('student_id, lesson_id, score, passed, failures, created_at')
+      .select('student_id, lesson_id, score, passed, failures, created_at, lesson_track_id, level')
       .eq('student_id', studentId)
       .order('created_at', { ascending: true });
     if (historyErr) throw historyErr;
+    // Resolve lesson titles by (track_id, level, lesson_number)
+    const triplets = new Set();
+    const trackIds = new Set();
+    const levels = new Set();
+    const lessonNumbers = new Set();
+    (historyRows || []).forEach(r => {
+      const track = r.lesson_track_id || null;
+      const lvl = r.level || null;
+      const ln = r.lesson_id || null;
+      if (track && lvl && ln !== null && ln !== undefined) {
+        triplets.add(`${track}||${lvl}||${ln}`);
+        trackIds.add(track);
+        levels.add(lvl);
+        lessonNumbers.add(ln);
+      }
+    });
+    let lessonTitleMap = new Map();
+    if (triplets.size > 0) {
+      const { data: lessonsData, error: lessonsErr } = await supabase
+        .from('lessons')
+        .select('track_id, level, lesson_number, title')
+        .in('track_id', [...trackIds])
+        .in('level', [...levels])
+        .in('lesson_number', [...lessonNumbers]);
+      if (!lessonsErr && lessonsData) {
+        lessonsData.forEach(l => {
+          lessonTitleMap.set(`${l.track_id}||${l.level}||${l.lesson_number}`, l.title);
+        });
+      }
+    }
+
+    // Try to backfill lesson_title for this student (best-effort)
+    try { await backfillLessonTitlesForStudent(studentId); } catch (e) { /* ignore */ }
+
     return (historyRows || []).map(h => ({
       date: h.created_at,
       lessonId: h.lesson_id,
+      lessonTitle: lessonTitleMap.get(`${h.lesson_track_id}||${h.level}||${h.lesson_id}`) || null,
+      lesson_title: lessonTitleMap.get(`${h.lesson_track_id}||${h.level}||${h.lesson_id}`) || null,
       score: h.score,
       passed: h.passed,
       failures: h.failures || []
@@ -582,6 +673,23 @@ export const waitForAuthSession = async (timeoutMs = 8000, intervalMs = 300) => 
 export const recordLessonHistory = async (studentUserId, lessonId, score, passed, failures = [], lessonTrackId = null, level = null) => {
   try {
     if (!studentUserId) throw new Error('Student user ID required');
+    // Attempt to resolve lesson title from `lessons` table using the quiz context
+    let resolvedLessonTitle = null;
+    try {
+      if (lessonTrackId || level || lessonId) {
+        const q = supabase.from('lessons').select('title').limit(1);
+        // If track/level/lesson_number are provided, prefer that match (lessonId here represents lesson_number)
+        if (lessonTrackId) q.eq('track_id', lessonTrackId);
+        if (level) q.eq('level', level);
+        if (lessonId !== null && lessonId !== undefined) q.eq('lesson_number', lessonId);
+        const { data: lessonRow, error: lessonErr } = await q.maybeSingle();
+        if (!lessonErr && lessonRow && lessonRow.title) resolvedLessonTitle = lessonRow.title;
+      }
+    } catch (resErr) {
+      // non-fatal: proceed without lesson title
+      console.debug('Failed to resolve lesson title for history insert:', resErr?.message || resErr);
+    }
+
     let query = supabase
       .from('lesson_history')
       .select('id')
@@ -601,7 +709,8 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
           failures: failures || [],
           created_at: new Date(),
           lesson_track_id: lessonTrackId || null,
-          level: level || null
+          level: level || null,
+          lesson_title: resolvedLessonTitle || null
         })
         .eq('id', existing.id);
       if (updateError) throw updateError;
@@ -618,7 +727,8 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
         failures: failures || [],
         created_at: new Date(),
         lesson_track_id: lessonTrackId || null,
-        level: level || null
+        level: level || null,
+        lesson_title: resolvedLessonTitle || null
       }], { returning: 'minimal' });
     if (error) throw error;
   } catch (err) {
@@ -672,6 +782,70 @@ export const getStudentLessonHistory = async (userId) => {
   } catch (err) {
     console.error('getStudentLessonHistory error:', err);
     return [];
+  }
+};
+
+// Backfill missing lesson_title values in lesson_history for a given student.
+export const backfillLessonTitlesForStudent = async (studentId) => {
+  try {
+    if (!studentId) return false;
+    // Fetch rows that are missing lesson_title but have enough composite info
+    const { data: rows, error: rowsErr } = await supabase
+      .from('lesson_history')
+      .select('id, lesson_id, lesson_track_id, level')
+      .eq('student_id', studentId)
+      .is('lesson_title', null);
+    if (rowsErr) throw rowsErr;
+    if (!rows || rows.length === 0) return true;
+
+    // Build sets to query lessons
+    const trackIds = new Set();
+    const levels = new Set();
+    const lessonNumbers = new Set();
+    rows.forEach(r => {
+      if (r.lesson_track_id && r.level != null && r.lesson_id != null) {
+        trackIds.add(r.lesson_track_id);
+        levels.add(r.level);
+        lessonNumbers.add(r.lesson_id);
+      }
+    });
+    if (trackIds.size === 0) return true;
+
+    const { data: lessonsData, error: lessonsErr } = await supabase
+      .from('lessons')
+      .select('id, track_id, level, lesson_number, title')
+      .in('track_id', [...trackIds])
+      .in('level', [...levels])
+      .in('lesson_number', [...lessonNumbers]);
+    if (lessonsErr) throw lessonsErr;
+    const titleMap = new Map();
+    (lessonsData || []).forEach(l => {
+      titleMap.set(`${l.track_id}||${l.level}||${l.lesson_number}`, l.title);
+    });
+
+    // Update each row individually with its resolved title where possible
+    for (const r of rows) {
+      const key = `${r.lesson_track_id}||${r.level}||${r.lesson_id}`;
+      const title = titleMap.get(key) || null;
+      if (title) {
+        try {
+          const { error: upErr } = await supabase
+            .from('lesson_history')
+            .update({ lesson_title: title })
+            .eq('id', r.id);
+          if (upErr) {
+            // Ignore update errors (may be RLS-related); continue
+            console.debug('backfill update error (ignored):', upErr.message || upErr);
+          }
+        } catch (uErr) {
+          console.debug('backfill update exception (ignored):', uErr?.message || uErr);
+        }
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('backfillLessonTitlesForStudent error:', err);
+    return false;
   }
 };
 

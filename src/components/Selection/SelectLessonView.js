@@ -3,8 +3,8 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
 import Header from '../common/Header';
 import Icon from '../common/Icon';
-import { MATERIALS_DATA } from '../../constants/materials';
 import { useMaterials } from '../../hooks/useMaterials';
+import { useLessonContent } from '../../hooks/useLessonContent';
 
 export default function SelectLessonView(props) {
   const auth = useAuthContext();
@@ -20,13 +20,27 @@ export default function SelectLessonView(props) {
   const level = selection?.level || null;
 
   const { materials: dbMaterials } = useMaterials();
-  const sourceMaterials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
-  const materialSpec = material || sourceMaterials.find(m => m.id === selection?.material?.id) || null;
-
   // Hook state must be declared unconditionally at top-level of the component
   const [showStartCard, setShowStartCard] = useState(false);
   const [activeLessonData, setActiveLessonData] = useState(null);
   const [pressedLesson, setPressedLesson] = useState(null);
+
+  const dbSelection = { material: selection.material, level: selection.level, lessonNumber: activeLessonData?.lessonNumber };
+  const { content: lessonContent } = useLessonContent(dbSelection);
+
+  // Gatekeeper: don't render Learning Path until DB materials are available
+  if (!dbMaterials || dbMaterials.length === 0) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-black">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-20 h-20 rounded-full border-4 border-[#00F2FF] animate-spin" style={{ boxShadow: '0 0 30px rgba(0,242,255,0.35)' }} />
+          <div className="text-[#00F2FF] font-extrabold text-2xl uppercase tracking-widest animate-pulse" style={{ textShadow: '0 6px 0 #001218, 0 18px 40px rgba(0,242,255,0.16)' }}>LOADING TRACKS...</div>
+        </div>
+      </div>
+    );
+  }
+  const sourceMaterials = dbMaterials;
+  const materialSpec = material || sourceMaterials.find(m => m.id === selection?.material?.id) || null;
 
   if (!materialSpec || !level) {
     return (
@@ -49,7 +63,7 @@ export default function SelectLessonView(props) {
     // Prevent outer click handlers from immediately closing the mini-card
     try { e.stopPropagation(); } catch (err) {}
     // Show start mini-card inside the button container
-    setActiveLessonData({ lessonNumber: num, title: materialSpec?.title || selection.material?.title || 'Lesson', isCurrent, isPassed: !!passed });
+    setActiveLessonData({ lessonNumber: num, isCurrent, isPassed: !!passed });
     setShowStartCard(true);
   };
 
@@ -91,8 +105,15 @@ export default function SelectLessonView(props) {
           let bgClass = 'bg-[#1f2937]';
           let bottomClass = 'bg-[#0f1724]';
           let textClass = 'text-[#004e57]';
+          let borderStyle = 'none';
           // Only override for current or failed
-          if (isCurrent) {
+          if (isPerfect) {
+            // Perfect score styling: light neon purple with glow and border
+            bgClass = 'bg-[#BF40FF]';
+            bottomClass = 'bg-[#9f2fe0]';
+            textClass = 'text-[#0A0A0C]';
+            borderStyle = '1px solid #DF80FF';
+          } else if (isCurrent) {
             bgClass = 'bg-[#00F2FF]';
             bottomClass = 'bg-[#008F9F]';
             textClass = 'text-[#0A0A0C]';
@@ -113,7 +134,9 @@ export default function SelectLessonView(props) {
           const isPressed = pressedLesson === num;
           // Compute button shadow: cyan for current, red for failed, subtle dark for defaults
           let boxShadowVal = `0px ${isPressed ? 2 : 8}px 0px rgba(0,0,0,0.6)`;
-          if (isCurrent) {
+          if (isPerfect) {
+            boxShadowVal = '0 0 20px rgba(191,64,255,0.7)';
+          } else if (isCurrent) {
             boxShadowVal = `0px ${isPressed ? 2 : 8}px 0px #008f9f`;
           } else if (isFailed) {
             boxShadowVal = `0px ${isPressed ? 2 : 8}px 0px rgba(255,49,49,0.6)`;
@@ -145,7 +168,7 @@ export default function SelectLessonView(props) {
                   onTouchEnd={() => setPressedLesson(null)}
                   className={buttonClass}
                   style={{
-                    border: 'none',
+                    border: borderStyle,
                     boxShadow: boxShadowVal,
                     transition: 'transform 0.12s, box-shadow 0.12s'
                   }}
@@ -169,7 +192,7 @@ export default function SelectLessonView(props) {
                     return (
                       <div onClick={(e) => e.stopPropagation()} className="absolute w-40 p-2 rounded-xl text-xs" style={{ left: '50%', transform: 'translateX(-50%)', bottom: 'calc(100% + 12px)', background: cardBg, border: `1.5px solid ${cardBorder}`, boxShadow: cardBoxShadow, position: 'absolute' }}>
                         <p className="font-black text-xs text-white">Lesson {activeLessonData.lessonNumber}</p>
-                        <p className="text-[10px] truncate text-white">{activeLessonData.title}</p>
+                        <p className="text-[10px] truncate text-white">{lessonContent?.title || ''}</p>
 
                         <div className="mt-2">
                           <button onClick={(e) => { e.stopPropagation(); startQuiz(); }} className={insideBtnClass} style={{ paddingTop: 6, paddingBottom: 6 }}>

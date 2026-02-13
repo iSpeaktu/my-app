@@ -1,5 +1,5 @@
 // Extracted from App.js - Lesson fetching hook (original lines 2106-2184)
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../config/supabase';
 
 /**
@@ -14,45 +14,36 @@ import { supabase } from '../config/supabase';
  *   - noQuestions: Boolean indicating lesson exists but has no questions
  */
 export const useLessonContent = (selection) => {
-  // --- STATE INITIALIZATION (original lines 2107-2110) ---
-  const [dbContent, setDbContent] = useState(null);
-  const [dbLoading, setDbLoading] = useState(false);
-  const [dbError, setDbError] = useState('');
-  const [dbNoQuestions, setDbNoQuestions] = useState(false);
+  const [content, setContent] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // --- FETCH LESSON FROM DATABASE (original lines 2112-2184) ---
+  // requestId to ensure only latest response updates state
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
-    let active = true;
-    const loadLessonFromDb = async () => {
-      // Validate selection before querying
-      if (!selection.material?.id || !selection.level || !selection.lessonNumber) {
-        if (active) {
-          setDbContent(null);
-          setDbError('');
-          setDbNoQuestions(false);
-          setDbLoading(false);
-        }
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    // increment request id for this request
+    const reqId = ++requestIdRef.current;
+
+    const load = async () => {
+      // validate selection
+      if (!selection?.material?.id || !selection?.level || !selection?.lessonNumber) {
+        setContent(null);
+        setError('');
+        setLoading(false);
         return;
       }
 
+      setLoading(true);
+      setError('');
+      // clear previous content immediately to avoid flashing stale titles
+      setContent(null);
+
       try {
-        if (active) {
-          setDbLoading(true);
-          setDbError('');
-          setDbNoQuestions(false);
-        }
-
-        console.info('[useLessonContent] selection', {
-          track_id: selection.material?.id || null,
-          level: selection.level || null,
-          lesson_number: selection.lessonNumber || null
-        });
-
-        // New fetcher: resolve lesson id then fetch lesson_questions + choices
-        let lessonRow = null;
-        let questions = [];
-
-        // First find the lesson id for the current selection
+        // find lesson row by composite key
         const { data: lessonRowRaw, error: lessonErr } = await supabase
           .from('lessons')
           .select('id, title')
@@ -61,19 +52,21 @@ export const useLessonContent = (selection) => {
           .eq('lesson_number', selection.lessonNumber)
           .maybeSingle();
 
-        if (lessonErr) throw lessonErr;
-        if (!lessonRowRaw || !lessonRowRaw.id) {
-          // No lesson found — leave questions empty
-          lessonRow = lessonRowRaw || { id: null, title: '' };
-          questions = [];
-        } else {
-          lessonRow = lessonRowRaw;
-          const lessonId = lessonRow.id;
+        if (signal.aborted || reqId !== requestIdRef.current) return;
 
+        if (lessonErr) throw lessonErr;
+
+        let lessonRow = lessonRowRaw || { id: null, title: '' };
+        let questions = [];
+
+        if (lessonRow && lessonRow.id) {
           const { data: qrows, error: qerr } = await supabase
             .from('lesson_questions')
             .select('*, lesson_choices (*)')
-            .eq('lesson_id', lessonId);
+            .eq('lesson_id', lessonRow.id);
+
+          if (signal.aborted || reqId !== requestIdRef.current) return;
+
           if (qerr) throw qerr;
 
           questions = (qrows || []).map(q => {
@@ -94,42 +87,27 @@ export const useLessonContent = (selection) => {
           }).filter(q => q.question && q.options && q.options.length === 3);
         }
 
-        console.info('[useLessonContent] db result', {
-          lesson_id: lessonRow?.id || null,
-          lesson_title: lessonRow?.title || '',
-          usable_question_count: questions.length,
-        });
+        if (signal.aborted || reqId !== requestIdRef.current) return;
 
-        // --- SET CONTENT IF VALID QUESTIONS EXIST ---
-        if (active) {
-          setDbContent({
-            title: lessonRow?.title || '',
-            questions
-          });
-          // Flag if lesson row exists but no usable questions
-          setDbNoQuestions(!lessonRow?.id || questions.length === 0);
-        }
+        setContent({ title: lessonRow?.title || '', questions });
       } catch (err) {
-        if (active) {
-          setDbError(err?.message || 'Failed to load lesson');
-          setDbContent(null);
-          setDbNoQuestions(false);
-        }
+        if (signal.aborted) return; // ignore abort errors
+        setError(err?.message || 'Failed to load lesson');
+        setContent(null);
       } finally {
-        if (active) setDbLoading(false);
+        if (!signal.aborted && reqId === requestIdRef.current) setLoading(false);
       }
     };
 
-    loadLessonFromDb();
-    return () => { active = false; };
-  }, [selection.material?.id, selection.level, selection.lessonNumber]);
+    load();
 
-  return {
-    content: dbContent,
-    loading: dbLoading,
-    error: dbError,
-    noQuestions: dbNoQuestions,
-  };
+    // cleanup: abort any in-flight requests for this effect
+    return () => {
+      controller.abort();
+    };
+  }, [selection?.material?.id, selection?.level, selection?.lessonNumber]);
+
+  return { content, loading, error };
 };
 
 /**

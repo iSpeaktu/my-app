@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
 import { supabase, updateStudentData } from '../../config/supabase';
 import { usePersistentAuth } from '../../hooks/useAuth';
 import Header from '../common/Header';
-import { MATERIALS_DATA } from '../../constants/materials';
 import { useMaterials } from '../../hooks/useMaterials';
 
 export default function SettingsView() {
@@ -13,11 +12,21 @@ export default function SettingsView() {
 
   const [name, setName] = useState(auth.displayName || auth.userName || '');
   const [lessonsPerWeek, setLessonsPerWeek] = useState(user.onboardingData?.lessonsPerWeek || 3);
-  const [selectedMaterialId, setSelectedMaterialId] = useState(user.onboardingData?.material?.id || (MATERIALS_DATA[0] && MATERIALS_DATA[0].id));
+  const [selectedMaterialId, setSelectedMaterialId] = useState(user.onboardingData?.material?.id || null);
   const { materials: dbMaterials } = useMaterials();
-  const materials = (dbMaterials && dbMaterials.length) ? dbMaterials : MATERIALS_DATA;
-  const materialSpec = materials.find(m => m.id === selectedMaterialId) || materials[0];
-  const [selectedLevel, setSelectedLevel] = useState(user.onboardingData?.level || (materialSpec?.levels?.[0]));
+  const materials = dbMaterials || [];
+  const materialSpec = materials.find(m => m.id === selectedMaterialId) || materials[0] || null;
+  const [selectedLevel, setSelectedLevel] = useState(user.onboardingData?.level || null);
+
+  // When materials first load, ensure sensible defaults are selected
+  useEffect(() => {
+    if (!selectedMaterialId && materials[0]) {
+      setSelectedMaterialId(materials[0].id);
+    }
+    if (!selectedLevel && materialSpec?.levels?.[0]) {
+      setSelectedLevel(materialSpec.levels[0]);
+    }
+  }, [materials, materialSpec]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
