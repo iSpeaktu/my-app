@@ -1,7 +1,7 @@
 import React from 'react';
 import LoadingSpinner from './LoadingSpinner';
 
-export default function LearningPathLoader({ message = 'LOADING TRACKS...', size = 20 }) {
+export default function LearningPathLoader({ message = 'LOADING TRACKS...', size = 200 }) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center">
       <div className="flex flex-col items-center px-6">

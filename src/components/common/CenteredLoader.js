@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 
 /**
  * BrandMascot - Animated SVG mascot
  */
-const BrandMascot = ({ size = 120 }) => (
+const BrandMascot = ({ size = 200 }) => (
   <div className="relative flex items-center justify-center">
     <svg 
       width={size} 
@@ -13,7 +13,7 @@ const BrandMascot = ({ size = 120 }) => (
       xmlns="http://www.w3.org/2000/svg"
       className="drop-shadow-xl"
     >
-      <circle cx="250" cy="250" r="240" fill="#FFFFFF" className="opacity-10" />
+      <circle cx="250" cy="250" r="240" fill="#000000" className="opacity-100" />
       <path d="M210 410C210 410 80 340 80 180C80 100 150 70 210 70V410Z" fill="#FFFFFF" style={{ transformOrigin: 'bottom center', animation: 'sway 3s ease-in-out infinite' }} />
       <rect x="290" y="160" width="70" height="250" fill="#FFFFFF" style={{ animation: 'floatStem 2s ease-in-out infinite' }} />
       <circle cx="325" cy="90" r="35" fill="#FFFFFF" style={{ animation: 'bounceDot 2s ease-in-out infinite' }} />
@@ -30,34 +30,14 @@ const BrandMascot = ({ size = 120 }) => (
 /**
  * CenteredLoader - centers the BrandMascot and optional typing caption
  */
-export default function CenteredLoader({ typingText = '', size = 120, typing = true }) {
-  const [typedCaption, setTypedCaption] = useState('');
-  const [cursorVisible, setCursorVisible] = useState(true);
-
-  useEffect(() => {
-    if (!typing || !typingText) return;
-    let mounted = true;
-    let idx = 0;
-    let charTimer = null;
-    let cursorTimer = null;
-    charTimer = setInterval(() => {
-      if (!mounted) return;
-      idx += 1;
-      setTypedCaption(typingText.slice(0, idx));
-      if (idx >= typingText.length) clearInterval(charTimer);
-    }, 80);
-    cursorTimer = setInterval(() => { if (!mounted) return; setCursorVisible(v => !v); }, 500);
-    return () => { mounted = false; try { clearInterval(charTimer); } catch (e) {} try { clearInterval(cursorTimer); } catch (e) {} };
-  }, [typingText, typing]);
-
+export default function CenteredLoader({ typingText = '', size = 250}) {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="flex flex-col items-center">
         <BrandMascot size={size} />
         {typingText ? (
-          <div className="text-white/80 text-sm font-semibold mt-3">
-            <span>{typedCaption}</span>
-            <span className={`ml-1 inline-block w-2 ${cursorVisible ? 'opacity-100' : 'opacity-0'}`}>|</span>
+          <div className="text-white font-black mt-3" style={{ fontFamily: 'Nunito, sans-serif' }}>
+            {typingText}
           </div>
         ) : null}
       </div>
