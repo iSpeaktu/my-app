@@ -4,7 +4,7 @@ import { ThumbsUp, Bell, ChevronRight, X } from 'lucide-react';
 import { Header, Card, Icon } from '../common';
 import CenteredLoader from '../common/CenteredLoader';
 import { useMaterials } from '../../hooks/useMaterials';
-import { useNotifications } from '../../hooks/useNotifications';
+import { useNotifications, createNotification } from '../../hooks/useNotifications';
 import { supabase, deleteNotification, getNotifications } from '../../config/supabase';
 import { AuthContext } from '../../context/AuthContext';
 import { UserContext } from '../../context/UserContext';
@@ -129,6 +129,20 @@ export default function StudentDashboard() {
       auth.setLoginNotice('');
     } catch (err) {
       console.error('Logout failed:', err);
+    }
+  };
+
+  const sendPraise = async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData?.session?.user?.id;
+      if (!userId) return;
+      const created = await createNotification(userId, 'praise', userId, null);
+      if (created && created.id) {
+        setStudentNotifications(prev => [created, ...(prev || [])]);
+      }
+    } catch (err) {
+      console.error('sendPraise failed', err);
     }
   };
 

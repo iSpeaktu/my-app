@@ -1,6 +1,31 @@
 // Extracted from App.js - Notifications hook (original lines 1260-1280)
 import { useEffect } from 'react';
-import { getNotifications, supabase } from '../config/supabase';
+import { supabase } from '../config/supabase';
+
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:4000';
+
+export const fetchNotifications = async (userId) => {
+  if (!userId) throw new Error('userId required');
+  const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/notifications`);
+  if (!res.ok) throw new Error(`Network error: ${res.status}`);
+  const payload = await res.json();
+  if (payload && payload.success) return payload.notifications || [];
+  throw new Error(payload?.error || 'Failed to fetch notifications');
+};
+
+export const createNotification = async (recipientUserId, type, senderUserId = null, lessonId = null) => {
+  if (!recipientUserId || !type) throw new Error('recipientUserId and type required');
+  const body = { userId: recipientUserId, type, senderUserId, lessonId };
+  const res = await fetch(`${API_BASE}/api/notifications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Network error: ${res.status}`);
+  const payload = await res.json();
+  if (payload && payload.success) return payload.notification || true;
+  throw new Error(payload?.error || 'Failed to create notification');
+};
 
 /**
  * useNotifications - Custom hook for polling and managing student notifications
@@ -23,7 +48,7 @@ export const useNotifications = (setStudentNotifications) => {
 
       const refresh = async () => {
         try {
-          const latest = await getNotifications(user.id);
+          const latest = await fetchNotifications(user.id);
           if (active) setStudentNotifications(latest || []);
         } catch (err) {
           console.error('Failed to refresh notifications:', err);

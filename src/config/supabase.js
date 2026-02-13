@@ -19,6 +19,22 @@ export const supabase = createClient(
   }
 );
 
+// API proxy base (set REACT_APP_API_URL to e.g. http://localhost:4000)
+const API_BASE = process.env.REACT_APP_API_URL || '';
+
+async function apiFetch(path, options = {}) {
+  try {
+    const base = API_BASE || '';
+    const url = base ? `${base.replace(/\/$/, '')}${path}` : path;
+    const res = await fetch(url, options);
+    const text = await res.text();
+    try { return JSON.parse(text); } catch (e) { return text; }
+  } catch (err) {
+    console.warn('apiFetch failed', err);
+    throw err;
+  }
+}
+
 const ensureTeacherProfile = async (user, displayName) => {
   try {
     const userId = user?.id || null;
@@ -671,39 +687,64 @@ export const waitForAuthSession = async (timeoutMs = 8000, intervalMs = 300) => 
 
 // --- LESSON HISTORY & STUDENT DATA ---
 export const recordLessonHistory = async (studentUserId, lessonId, score, passed, failures = [], lessonTrackId = null, level = null) => {
+  // Prefer server API to centralize recording logic; fallback to direct Supabase on error
   try {
-    if (!studentUserId) throw new Error('Student user ID required');
-    // Attempt to resolve lesson title from `lessons` table using the quiz context
-    let resolvedLessonTitle = null;
+    const payload = { lessonNumber: lessonId, lessonTrackId, level, score, passed, failures };
+    const path = `/api/students/${encodeURIComponent(studentUserId)}/history`;
+    const result = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (result && result.success) return;
+    throw new Error(result?.error || 'API failed');
+  } catch (apiErr) {
+    console.warn('recordLessonHistory API failed, falling back to Supabase:', apiErr?.message || apiErr);
     try {
-      if (lessonTrackId || level || lessonId) {
-        const q = supabase.from('lessons').select('title').limit(1);
-        // If track/level/lesson_number are provided, prefer that match (lessonId here represents lesson_number)
-        if (lessonTrackId) q.eq('track_id', lessonTrackId);
-        if (level) q.eq('level', level);
-        if (lessonId !== null && lessonId !== undefined) q.eq('lesson_number', lessonId);
-        const { data: lessonRow, error: lessonErr } = await q.maybeSingle();
-        if (!lessonErr && lessonRow && lessonRow.title) resolvedLessonTitle = lessonRow.title;
+      if (!studentUserId) throw new Error('Student user ID required');
+      // Attempt original DB insert/update behavior
+      let resolvedLessonTitle = null;
+      try {
+        if (lessonTrackId || level || lessonId) {
+          const q = supabase.from('lessons').select('title').limit(1);
+          if (lessonTrackId) q.eq('track_id', lessonTrackId);
+          if (level) q.eq('level', level);
+          if (lessonId !== null && lessonId !== undefined) q.eq('lesson_number', lessonId);
+          const { data: lessonRow, error: lessonErr } = await q.maybeSingle();
+          if (!lessonErr && lessonRow && lessonRow.title) resolvedLessonTitle = lessonRow.title;
+        }
+      } catch (resErr) {
+        console.debug('Failed to resolve lesson title for history insert:', resErr?.message || resErr);
       }
-    } catch (resErr) {
-      // non-fatal: proceed without lesson title
-      console.debug('Failed to resolve lesson title for history insert:', resErr?.message || resErr);
-    }
 
-    let query = supabase
-      .from('lesson_history')
-      .select('id')
-      .eq('student_id', studentUserId)
-      .eq('lesson_id', lessonId);
-    if (lessonTrackId) query = query.eq('lesson_track_id', lessonTrackId);
-    query = query.order('created_at', { ascending: false }).limit(1).maybeSingle();
-    const { data: existing, error: fetchError } = await query;
-    if (fetchError) throw fetchError;
-
-    if (existing?.id) {
-      const { error: updateError } = await supabase
+      let query = supabase
         .from('lesson_history')
-        .update({
+        .select('id')
+        .eq('student_id', studentUserId)
+        .eq('lesson_id', lessonId);
+      if (lessonTrackId) query = query.eq('lesson_track_id', lessonTrackId);
+      query = query.order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const { data: existing, error: fetchError } = await query;
+      if (fetchError) throw fetchError;
+
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from('lesson_history')
+          .update({
+            score,
+            passed,
+            failures: failures || [],
+            created_at: new Date(),
+            lesson_track_id: lessonTrackId || null,
+            level: level || null,
+            lesson_title: resolvedLessonTitle || null
+          })
+          .eq('id', existing.id);
+        if (updateError) throw updateError;
+        return;
+      }
+
+      const { error } = await supabase
+        .from('lesson_history')
+        .insert([{
+          student_id: studentUserId,
+          lesson_id: lessonId,
           score,
           passed,
           failures: failures || [],
@@ -711,51 +752,51 @@ export const recordLessonHistory = async (studentUserId, lessonId, score, passed
           lesson_track_id: lessonTrackId || null,
           level: level || null,
           lesson_title: resolvedLessonTitle || null
-        })
-        .eq('id', existing.id);
-      if (updateError) throw updateError;
-      return;
+        }], { returning: 'minimal' });
+      if (error) throw error;
+    } catch (err) {
+      console.error('recordLessonHistory error:', err);
+      throw err;
     }
-
-    const { error } = await supabase
-      .from('lesson_history')
-      .insert([{
-        student_id: studentUserId,
-        lesson_id: lessonId,
-        score,
-        passed,
-        failures: failures || [],
-        created_at: new Date(),
-        lesson_track_id: lessonTrackId || null,
-        level: level || null,
-        lesson_title: resolvedLessonTitle || null
-      }], { returning: 'minimal' });
-    if (error) throw error;
-  } catch (err) {
-    console.error('recordLessonHistory error:', err);
-    throw err;
   }
 };
 
 export const updateStudentProgress = async (userId, updates) => {
+  // Prefer server API, fallback to Supabase client
   try {
-    if (!userId) throw new Error('User ID required');
-    const { data, error } = await supabase
-      .from('students')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-  } catch (err) {
-    console.error('updateStudentProgress error:', err);
-    throw err;
+    const path = `/api/students/${encodeURIComponent(userId)}/progress`;
+    const result = await apiFetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+    if (result && result.success) return result.updated || null;
+    throw new Error(result?.error || 'API failed');
+  } catch (apiErr) {
+    console.warn('updateStudentProgress via API failed, falling back to Supabase:', apiErr?.message || apiErr);
+    try {
+      if (!userId) throw new Error('User ID required');
+      const { data, error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } catch (err) {
+      console.error('updateStudentProgress error:', err);
+      throw err;
+    }
   }
 };
 
 export const getStudentProgress = async (userId) => {
   try {
     if (!userId) throw new Error('User ID required');
+    const path = `/api/students/${encodeURIComponent(userId)}/progress`;
+    const result = await apiFetch(path);
+    if (result && result.success) return result.progress || null;
+  } catch (apiErr) {
+    console.warn('getStudentProgress via API failed, falling back to Supabase:', apiErr?.message || apiErr);
+  }
+  try {
     const { data, error } = await supabase
       .from('students')
       .select('*')
@@ -772,6 +813,13 @@ export const getStudentProgress = async (userId) => {
 export const getStudentLessonHistory = async (userId) => {
   try {
     if (!userId) throw new Error('User ID required');
+    const path = `/api/students/${encodeURIComponent(userId)}/history`;
+    const result = await apiFetch(path);
+    if (result && result.success) return result.history || [];
+  } catch (apiErr) {
+    console.warn('getStudentLessonHistory via API failed, falling back to Supabase:', apiErr?.message || apiErr);
+  }
+  try {
     const { data, error } = await supabase
       .from('lesson_history')
       .select('*')
@@ -884,6 +932,13 @@ export const cleanupLessonHistoryLatest = async (userId) => {
 // --- NOTIFICATIONS (Reminders & Praise) ---
 export const createNotification = async (recipientUserId, type, senderUserId = null, lessonId = null) => {
   try {
+    const payload = { userId: recipientUserId, type, lessonId, senderUserId };
+    const result = await apiFetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (result && result.success) return true;
+  } catch (apiErr) {
+    console.warn('createNotification via API failed, falling back to Supabase:', apiErr?.message || apiErr);
+  }
+  try {
     if (!recipientUserId) throw new Error('Recipient user ID required');
     let senderId = senderUserId;
     if (!senderId) {
@@ -900,6 +955,7 @@ export const createNotification = async (recipientUserId, type, senderUserId = n
         lesson_id: lessonId || null
       }], { returning: 'minimal' });
     if (error) throw error;
+    return true;
   } catch (err) {
     console.error('createNotification error:', err);
     throw err;
@@ -909,6 +965,13 @@ export const createNotification = async (recipientUserId, type, senderUserId = n
 export const getNotifications = async (userId) => {
   try {
     if (!userId) throw new Error('User ID required');
+    const path = `/api/users/${encodeURIComponent(userId)}/notifications`;
+    const result = await apiFetch(path);
+    if (result && result.success) return result.notifications || [];
+  } catch (apiErr) {
+    console.warn('getNotifications via API failed, falling back to Supabase:', apiErr?.message || apiErr);
+  }
+  try {
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -927,6 +990,13 @@ export const getTeacherStudents = getTeacherRoster;
 export const getAchievements = async (userId) => {
   try {
     if (!userId) throw new Error('User ID required');
+    const path = `/api/students/${encodeURIComponent(userId)}/achievements`;
+    const result = await apiFetch(path);
+    if (result && result.success) return result.achievements || [];
+  } catch (apiErr) {
+    console.warn('getAchievements via API failed, falling back to Supabase:', apiErr?.message || apiErr);
+  }
+  try {
     const { data, error } = await supabase
       .from('achievements')
       .select('badge_name, achieved_at')
