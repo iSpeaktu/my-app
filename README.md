@@ -68,3 +68,21 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+## CI / Secrets Setup
+
+This project uses a GitHub Actions workflow to run server integration tests. The workflow requires the following repository secrets to be set in `Settings → Secrets and variables → Actions`:
+
+- `SUPABASE_URL` — your Supabase project URL (e.g. `https://xyz.supabase.co`)
+- `SUPABASE_SERVICE_ROLE_KEY` — your Supabase service role key (keep this secret)
+- (optional) `SUPABASE_ANON_KEY` — anon/public key used by frontend fallbacks
+
+Add secrets via the web UI or with the GitHub CLI. Example using `gh`:
+
+```bash
+gh secret set SUPABASE_URL --body "https://your-project.supabase.co"
+gh secret set SUPABASE_SERVICE_ROLE_KEY --body "your-service-role-key"
+gh secret set SUPABASE_ANON_KEY --body "your-anon-key"
+```
+
+If `SUPABASE_SERVICE_ROLE_KEY` was accidentally committed to the repository, rotate the key in the Supabase dashboard and remove the exposed value from the repository. This repository now ignores `/server/.env` — move any secrets into GitHub Actions secrets.
