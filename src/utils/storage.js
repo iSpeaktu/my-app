@@ -39,10 +39,37 @@ export const getStoredSelection = () => {
     const raw = localStorage.getItem(SELECTION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    let material = parsed?.material || parsed?.materialId || null;
+    let materialTitle = parsed?.materialTitle || null;
+    let materialIcon = parsed?.materialIcon || null;
+    let materialColor = parsed?.materialColor || null;
+
+    // Backfill metadata from cached onboarding if available
+    if (material && (!materialTitle || !materialIcon || !materialColor)) {
+      try {
+        const onRaw = localStorage.getItem('user_onboarding');
+        if (onRaw) {
+          const on = JSON.parse(onRaw);
+          const mat = on?.material;
+          const matId = mat && (mat.id || mat === on.material) ? (mat.id || mat) : null;
+          if (matId && String(matId) === String(material)) {
+            materialTitle = materialTitle || mat?.title || null;
+            materialIcon = materialIcon || mat?.icon || null;
+            materialColor = materialColor || mat?.color || null;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     return {
-      material: parsed?.materialId || null,
+      material,
       level: parsed?.level || null,
-      lessonNumber: parsed?.lessonNumber || null
+      lessonNumber: parsed?.lessonNumber || null,
+      materialTitle,
+      materialIcon,
+      materialColor
     };
   } catch {
     return null;
@@ -57,14 +84,31 @@ export const setStoredSelection = (sel) => {
   try {
     const materialVal = sel?.material;
     const materialId = materialVal && typeof materialVal === 'object' ? materialVal.id : (typeof materialVal === 'number' || typeof materialVal === 'string' ? materialVal : null);
+    const materialTitle = sel?.materialTitle || (materialVal && typeof materialVal === 'object' ? materialVal.title : null);
+    const materialIcon = sel?.materialIcon || (materialVal && typeof materialVal === 'object' ? materialVal.icon : null);
+    const materialColor = sel?.materialColor || (materialVal && typeof materialVal === 'object' ? materialVal.color : null);
     const payload = {
-      materialId: materialId || null,
+      material: materialId || null,
       level: sel?.level || null,
-      lessonNumber: sel?.lessonNumber || null
+      lessonNumber: sel?.lessonNumber || null,
+      materialTitle: materialTitle || null,
+      materialIcon: materialIcon || null,
+      materialColor: materialColor || null
     };
     localStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(payload));
   } catch {
     return;
+  }
+};
+
+/**
+ * Clear the stored selection from localStorage
+ */
+export const clearStoredSelection = () => {
+  try {
+    localStorage.removeItem(SELECTION_STORAGE_KEY);
+  } catch {
+    // no-op
   }
 };
 

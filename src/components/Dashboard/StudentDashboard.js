@@ -1,7 +1,7 @@
 // Extracted from App.js - Dashboard component (original lines 689-802)
 import React, { useEffect, useState } from 'react';
 import { ThumbsUp, Bell, ChevronRight, X } from 'lucide-react';
-import { Header, Card, Icon } from '../common';
+import { Header, Card, Icon, LoadingSpinner } from '../common';
 import { useMaterials } from '../../hooks/useMaterials';
 import { useNotifications } from '../../hooks/useNotifications';
 import { supabase, deleteNotification, getNotifications } from '../../config/supabase';
@@ -64,9 +64,90 @@ export default function StudentDashboard() {
   const displayMaterial = currentMaterial || storedMaterial || null;
   const storedMaterialId = storedSelection?.material || null;
   const resolvedDisplayMaterial = displayMaterial || materials.find(m => m.id === storedMaterialId) || null;
-  const displayTitle = resolvedDisplayMaterial?.title || (storedMaterialId ? `Track ${storedMaterialId}` : 'Language Track');
-  const displayIcon = resolvedDisplayMaterial?.icon || 'book';
-  const displayColor = resolvedDisplayMaterial?.color || '#00F2FF';
+  const displayTitle = resolvedDisplayMaterial?.title || storedSelection?.materialTitle || 'Language Track';
+  const displayIcon = resolvedDisplayMaterial?.icon || storedSelection?.materialIcon || 'book';
+  const displayColor = resolvedDisplayMaterial?.color || storedSelection?.materialColor || '#00F2FF';
+
+  // Show an initial loader while waiting for DB materials/onboarding or stored selection.
+  // Behavior:
+  //  - Wait until DB readiness detected (materials present or onboarding material or stored selection).
+  //  - Once DB is ready, keep showing the loader for an additional 10 seconds.
+  //  - As a safety, do not block indefinitely: fallback to hide after 10 seconds total from mount.
+  const [showLoader, setShowLoader] = useState(true);
+  useEffect(() => {
+    let mounted = true;
+    let hideTimer = null;
+    // safety absolute timeout (20s)
+    const absoluteTimer = setTimeout(() => {
+      if (mounted) {
+        setShowLoader(false);
+        if (hideTimer) clearTimeout(hideTimer);
+      }
+    }, 20000);
+
+    const checkReady = () => {
+      return (materials && materials.length > 0) || !!onboardingData?.material || !!storedSelection?.material;
+    };
+
+    if (checkReady()) {
+      // DB already ready on mount — keep loader for 10 more seconds
+      hideTimer = setTimeout(() => { if (mounted) setShowLoader(false); }, 10000);
+    } else {
+      // Watch for readiness changes by polling a few times via micro-interval
+      const interval = setInterval(() => {
+        if (checkReady()) {
+          clearInterval(interval);
+          hideTimer = setTimeout(() => { if (mounted) setShowLoader(false); }, 10000);
+        }
+      }, 250);
+      // clear interval on unmount
+      // store reference so we can clear below
+      // attach to hideTimer variable for cleanup simplicity
+      hideTimer = interval;
+    }
+
+    return () => {
+      mounted = false;
+      try { if (hideTimer) clearTimeout(hideTimer); } catch (e) {}
+      try { clearTimeout(absoluteTimer); } catch (e) {}
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materials?.length, onboardingData?.material, storedSelection?.material]);
+
+  // Typing effect for loader caption
+  const typingFull = 'Hiya! we are getting your practice ready!';
+  const [typedCaption, setTypedCaption] = useState('');
+  const [cursorVisible, setCursorVisible] = useState(true);
+  useEffect(() => {
+    let mounted = true;
+    let idx = 0;
+    let charTimer = null;
+    let cursorTimer = null;
+    if (showLoader) {
+      // start typing
+      charTimer = setInterval(() => {
+        if (!mounted) return;
+        idx += 1;
+        setTypedCaption(typingFull.slice(0, idx));
+        if (idx >= typingFull.length) {
+          clearInterval(charTimer);
+        }
+      }, 80);
+      cursorTimer = setInterval(() => {
+        if (!mounted) return;
+        setCursorVisible(v => !v);
+      }, 500);
+    } else {
+      setTypedCaption('');
+      setCursorVisible(true);
+    }
+    return () => {
+      mounted = false;
+      try { if (charTimer) clearInterval(charTimer); } catch (e) {}
+      try { if (cursorTimer) clearInterval(cursorTimer); } catch (e) {}
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLoader]);
 
   // Normalize current material id for comparisons (onboardingData.material may be an id or object)
   const currentMaterialId = resolvedDisplayMaterial?.id || (onboardingData?.material && (typeof onboardingData.material === 'object' ? onboardingData.material.id : onboardingData.material)) || storedMaterialId || null;
@@ -123,6 +204,22 @@ export default function StudentDashboard() {
   };
 
   // No blocking onboarding loader — render immediately even while onboarding initializes
+
+  if (showLoader) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center px-6">
+          <LoadingSpinner />
+          <div className="text-white/80 text-sm font-semibold mt-3">
+            <span>{typedCaption}</span>
+            <span className={`ml-1 inline-block w-2 ${cursorVisible ? 'opacity-100' : 'opacity-0'}`}>
+              |
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">

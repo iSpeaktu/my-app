@@ -104,9 +104,10 @@ export const UserProvider = ({ children }) => {
       return resolvedValue;
     });
 
-    // Persist locally immediately so cache is ready for next reload
+    // Persist locally only when not rehydrating from DB to avoid
+    // overwriting a valid cached selection during initialization.
     try {
-      if (resolvedValue) {
+      if (resolvedValue && !initRef.current) {
         setStoredSelection(resolvedValue);
       }
     } catch (e) {

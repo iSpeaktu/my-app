@@ -1,7 +1,7 @@
 // Extracted from App.js - Authentication hook (original lines 170-480)
 import { useState, useEffect } from 'react';
 import { supabase, studentAuthSignIn, studentAuthSignUp, teacherAuthSignIn, teacherAuthSignUp, teacherAuthResetPassword, studentAuthResetPassword, findStudentEmailByUsername, waitForAuthSession, upsertProfile, upsertStudentProfile } from '../config/supabase';
-import { getStoredSelection, getStoredView } from '../utils/storage';
+import { getStoredSelection, getStoredView, clearStoredSelection } from '../utils/storage';
 import { getWeekStartISO } from '../utils/dateUtils';
 
 /**
@@ -174,6 +174,8 @@ export const useStudentAuth = () => {
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
+      // Clear persisted selection on sign-out to reset learning path data
+      try { clearStoredSelection(); } catch (e) {}
       return { success: true };
     } catch (error) {
       return { error: error.message || 'Sign out failed' };
