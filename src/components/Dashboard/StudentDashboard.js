@@ -78,13 +78,13 @@ export default function StudentDashboard() {
   useEffect(() => {
     let mounted = true;
     let hideTimer = null;
-    // safety absolute timeout (20s)
+    // safety absolute timeout (10s)
     const absoluteTimer = setTimeout(() => {
       if (mounted) {
         setShowLoader(false);
         if (hideTimer) clearTimeout(hideTimer);
       }
-    }, 20000);
+    }, 10000);
 
     const checkReady = () => {
       return (materials && materials.length > 0) || !!onboardingData?.material || !!storedSelection?.material;
@@ -175,7 +175,7 @@ export default function StudentDashboard() {
 
   if (showLoader) {
     return (
-      <CenteredLoader typingText="Hiya! we are getting your practice ready!" />
+      <CenteredLoader typingText="iSpeaktu" />
     );
   }
 

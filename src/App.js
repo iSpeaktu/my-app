@@ -18,7 +18,7 @@ import SelectLessonView from './components/Selection/SelectLessonView';
 import QuizResultsView from './components/Quiz/QuizResultsView';
 import TutorDashboard from './components/Dashboard/TutorDashboard';
 import SettingsView from './components/Dashboard/SettingsView';
-import { BottomNav, LoadingSpinner, ErrorBoundary } from './components/common';
+import { BottomNav, ErrorBoundary, CenteredLoader } from './components/common';
 import QuizView from './components/Quiz/QuizView';
 
 // === CUSTOM HOOKS ===
@@ -52,9 +52,7 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
   // avoid rendering the app UI to prevent flicker between login/dashboard.
   if (auth?.initializing) {
     return (
-      <div className="h-screen w-full bg-[#0A0A0C] flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-[#00F2FF20] border-t-[#00F2FF] rounded-full animate-spin" />
-      </div>
+      <CenteredLoader />
     );
   }
 

@@ -3,6 +3,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import { useUserContext } from '../../context/UserContext';
 import Header from '../common/Header';
 import Icon from '../common/Icon';
+import CenteredLoader from '../common/CenteredLoader';
 import { useMaterials } from '../../hooks/useMaterials';
 import { useLessonContent } from '../../hooks/useLessonContent';
 
@@ -39,11 +40,8 @@ export default function SelectLessonView(props) {
   // Gatekeeper: don't render Learning Path until DB materials are available
   if (!dbMaterials || dbMaterials.length === 0) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-black">
-        <div className="flex flex-col items-center gap-6">
-          <div className="w-20 h-20 rounded-full border-4 border-[#00F2FF] animate-spin" style={{ boxShadow: '0 0 30px rgba(0,242,255,0.35)' }} />
-          <div className="text-[#00F2FF] font-extrabold text-2xl uppercase tracking-widest animate-pulse" style={{ textShadow: '0 6px 0 #001218, 0 18px 40px rgba(0,242,255,0.16)' }}>LOADING TRACKS...</div>
-        </div>
+      <div className="min-h-screen w-full">
+        <CenteredLoader typingText="Loading tracks..." size={20} />
       </div>
     );
   }

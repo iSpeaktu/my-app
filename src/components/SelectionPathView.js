@@ -1,6 +1,6 @@
 // Extracted from App.js - SelectionPath component (original lines 1122-1137)
 import React from 'react';
-import { Header, Card, Icon } from './common';
+import { Header, Card, Icon, CenteredLoader } from './common';
 import { useAuthContext } from '../context/AuthContext';
 import { useUserContext } from '../context/UserContext';
 import { useMaterials } from '../hooks/useMaterials';
@@ -28,7 +28,7 @@ export default function SelectionPathView(props) {
     return (
       <div className="max-w-md mx-auto py-8 px-6 min-h-screen">
         <Header title="Choose Level" subtitle="Loading tracks..." showBack onBack={() => setView('dashboard')} />
-        <div className="mt-6 p-4 bg-[#16161D] border border-[#2D2D3A] rounded-lg text-white/70">Loading tracks from the server — please wait.</div>
+        <CenteredLoader typingText="Loading tracks from server..." size={16} />
       </div>
     );
   }
