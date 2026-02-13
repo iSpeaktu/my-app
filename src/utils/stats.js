@@ -3,10 +3,47 @@
 /**
  * Calculate total XP from completed lessons
  * @param {Array} completedHistory - Array of completed lesson history
- * @returns {number} Total XP (10 XP per passed lesson)
+ * @returns {number} Total XP (15 XP for perfect, 10 XP for pass)
  */
 export const calculateTotalXP = (completedHistory) => {
-  return completedHistory.filter(h => h.passed).length * 10; // XP Rule: +10 per lesson
+  try {
+    // Build attempts grouped by lessonId
+    const attemptsByLesson = {};
+    (completedHistory || []).forEach(h => {
+      const lid = h.lessonId || h.lessonId === 0 ? h.lessonId : (h.lessonId === undefined ? null : h.lessonId);
+      if (typeof lid === 'undefined' || lid === null) return;
+      attemptsByLesson[lid] = attemptsByLesson[lid] || [];
+      attemptsByLesson[lid].push(h);
+    });
+
+    let total = 0;
+    Object.values(attemptsByLesson).forEach(attempts => {
+      const ordered = (attempts || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+      let firstPassingIndex = -1;
+      let firstPassingScore = null;
+      for (let i = 0; i < ordered.length; i++) {
+        const s = typeof ordered[i].score === 'number' ? ordered[i].score : -1;
+        if (s >= 70) {
+          firstPassingIndex = i + 1;
+          firstPassingScore = s;
+          break;
+        }
+      }
+      if (firstPassingIndex === -1) return; // no XP for this lesson
+      if (firstPassingIndex === 1) {
+        total += (firstPassingScore === 100) ? 15 : 10;
+      } else if (firstPassingIndex === 2) {
+        total += 5;
+      } else if (firstPassingIndex === 3) {
+        total += 3;
+      } else {
+        // 4th+ => 0
+      }
+    });
+    return total;
+  } catch (e) {
+    return 0;
+  }
 };
 
 /**

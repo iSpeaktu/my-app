@@ -84,21 +84,50 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
 
     setStreakState(newState);
 
-    // Compute XP based on best result per lesson:
-    // - 25 XP for a perfect (100%)
-    // - 10 XP for a pass (70-99%)
-    // Ensure retakes don't double-count: use the best score per lesson
-    const bestScoreByLesson = {};
+    // Compute XP using first-passing-attempt + retake rules:
+    // - If first passing attempt is attempt #1:
+    //     perfect (100%) => 15 XP, pass (70-99%) => 10 XP
+    // - If first passing attempt is attempt #2 (first retake): 5 XP
+    // - If first passing attempt is attempt #3 (second retake): 3 XP
+    // - If first passing attempt is attempt #4 or later: 0 XP
+    // - If there is no passing attempt (all <70), XP for that lesson is 0
+    const attemptsByLesson = {};
     (updatedHistory || []).forEach(h => {
       const lid = h.lessonId;
       if (typeof lid === 'undefined' || lid === null) return;
-      const s = typeof h.score === 'number' ? h.score : -1;
-      if (typeof bestScoreByLesson[lid] === 'undefined' || s > bestScoreByLesson[lid]) bestScoreByLesson[lid] = s;
+      attemptsByLesson[lid] = attemptsByLesson[lid] || [];
+      attemptsByLesson[lid].push(h);
     });
+
     let computedXp = 0;
-    Object.values(bestScoreByLesson).forEach(score => {
-      if (score === 100) computedXp += 25;
-      else if (score >= 70) computedXp += 10;
+    Object.values(attemptsByLesson).forEach(attempts => {
+      // Sort attempts in chronological order (oldest first)
+      const ordered = (attempts || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+      // Find first passing attempt index (1-based)
+      let firstPassingIndex = -1;
+      let firstPassingScore = null;
+      for (let i = 0; i < ordered.length; i++) {
+        const s = typeof ordered[i].score === 'number' ? ordered[i].score : -1;
+        if (s >= 70) {
+          firstPassingIndex = i + 1;
+          firstPassingScore = s;
+          break;
+        }
+      }
+      if (firstPassingIndex === -1) {
+        // No passing attempt -> 0 XP
+        return;
+      }
+      if (firstPassingIndex === 1) {
+        if (firstPassingScore === 100) computedXp += 15;
+        else computedXp += 10;
+      } else if (firstPassingIndex === 2) {
+        computedXp += 5;
+      } else if (firstPassingIndex === 3) {
+        computedXp += 3;
+      } else {
+        // 4th+ attempt -> no XP
+      }
     });
 
     // Perfect streak tracking: increment when current attempt is perfect, reset otherwise
