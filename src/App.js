@@ -16,7 +16,7 @@ import ProgressView from './components/Dashboard/ProgressView';
 import SelectionPathView from './components/SelectionPathView';
 import SelectLessonView from './components/Selection/SelectLessonView';
 import QuizResultsView from './components/Quiz/QuizResultsView';
-import TutorDashboard from './components/TutorDashboard';
+import TutorDashboard from './components/Dashboard/TutorDashboard';
 import SettingsView from './components/Dashboard/SettingsView';
 import { BottomNav, LoadingSpinner, ErrorBoundary } from './components/common';
 import QuizView from './components/Quiz/QuizView';

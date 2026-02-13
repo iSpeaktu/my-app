@@ -68,6 +68,10 @@ export default function StudentDashboard() {
   const fallbackIcon = resolvedDisplayMaterial?.icon || 'book';
   const fallbackColor = resolvedDisplayMaterial?.color || '#00F2FF';
 
+  // Normalize current material id for comparisons (onboardingData.material may be an id or object)
+  const currentMaterialId = resolvedDisplayMaterial?.id || (onboardingData?.material && (typeof onboardingData.material === 'object' ? onboardingData.material.id : onboardingData.material)) || storedMaterialId || null;
+  const currentMaterialIdStr = currentMaterialId != null ? String(currentMaterialId) : null;
+
   const handleLogout = async () => {
     try {
       setView('login');
@@ -191,37 +195,24 @@ export default function StudentDashboard() {
 
       <div className="mb-10">
           <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-4">My Current Track</h4>
-          {/* If we don't yet know the current track, show a simple prompt to choose a track */}
-          {(displayMaterial === null && !storedMaterialId) ? (
-            <div className="w-full p-6 rounded-2xl bg-black border border-[#00121a] flex flex-col items-center justify-center space-y-4" style={{ minHeight: 140 }} role="status" aria-live="polite">
-              <div className="text-white font-bold text-lg uppercase tracking-wider">Select a track to start</div>
-              <div className="text-sm text-white/70">Choose a language track below to begin your lessons.</div>
-              <button
-                onClick={() => setView('select_level')}
-                className="mt-3 px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-sm uppercase tracking-wider"
-              >
-                Explore Tracks
-              </button>
+          {/* Always show student's track card (use fallbacks if DB/onboarding not yet loaded) */}
+          <Card className="border-[#00F2FF40] bg-[#00F2FF05] animate-in fade-in" onClick={() => { setSelection({ material: onboardingData.material || storedSelection?.material, level: onboardingData.level || '' }); setView('select_lesson'); }}>
+            <div className="flex items-center gap-5">
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
+                          <Icon name={resolvedDisplayMaterial?.icon || fallbackIcon} style={{ color: resolvedDisplayMaterial?.color || fallbackColor }} />
+                        </div>
+                              <div className="flex-1">
+                                <h3 className="font-bold text-lg text-white">{fallbackTitle}</h3>
+                                <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData?.level || ''}</p>
+                              </div>
+                <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
             </div>
-          ) : (
-            <Card className="border-[#00F2FF40] bg-[#00F2FF05] animate-in fade-in" onClick={() => { setSelection({ material: onboardingData.material, level: onboardingData.level }); setView('select_lesson'); }}>
-              <div className="flex items-center gap-5">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
-                            <Icon name={resolvedDisplayMaterial?.icon || fallbackIcon} style={{ color: resolvedDisplayMaterial?.color || fallbackColor }} />
-                          </div>
-                                <div className="flex-1">
-                                  <h3 className="font-bold text-lg text-white">{fallbackTitle}</h3>
-                                  <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData?.level || ''}</p>
-                                </div>
-                  <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
-              </div>
-            </Card>
-          )}
+          </Card>
       </div>
 
       <h4 className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-4">Explore Tracks</h4>
       <div className="grid grid-cols-1 gap-4">
-        {materials.filter(m => m.id !== onboardingData?.material?.id).map((mat) => (
+        {materials.filter(m => String(m.id) !== currentMaterialIdStr).map((mat) => (
           <Card key={mat.id} onClick={() => { setSelection({ material: mat }); setView('select_level'); }}>
             <div className="flex items-center gap-5">
               <div className="w-12 h-12 rounded-xl bg-[#1C1C26] border border-[#2D2D3A] flex items-center justify-center">
