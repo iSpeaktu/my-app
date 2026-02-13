@@ -6,7 +6,11 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:4000';
 
 export const fetchNotifications = async (userId) => {
   if (!userId) throw new Error('userId required');
-  const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/notifications`);
+  const url = `${API_BASE}/api/users/${encodeURIComponent(userId)}/notifications`;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(url, { headers });
   if (!res.ok) throw new Error(`Network error: ${res.status}`);
   const payload = await res.json();
   if (payload && payload.success) return payload.notifications || [];
@@ -16,11 +20,11 @@ export const fetchNotifications = async (userId) => {
 export const createNotification = async (recipientUserId, type, senderUserId = null, lessonId = null) => {
   if (!recipientUserId || !type) throw new Error('recipientUserId and type required');
   const body = { userId: recipientUserId, type, senderUserId, lessonId };
-  const res = await fetch(`${API_BASE}/api/notifications`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const url = `${API_BASE}/api/notifications`;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`Network error: ${res.status}`);
   const payload = await res.json();
   if (payload && payload.success) return payload.notification || true;

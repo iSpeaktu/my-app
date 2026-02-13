@@ -26,7 +26,17 @@ async function apiFetch(path, options = {}) {
   try {
     const base = API_BASE || '';
     const url = base ? `${base.replace(/\/$/, '')}${path}` : path;
-    const res = await fetch(url, options);
+    // Attach Authorization header with current access token when available
+    const opts = { ...options };
+    opts.headers = opts.headers ? { ...opts.headers } : {};
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+    } catch (e) {
+      // ignore
+    }
+    const res = await fetch(url, opts);
     const text = await res.text();
     try { return JSON.parse(text); } catch (e) { return text; }
   } catch (err) {
