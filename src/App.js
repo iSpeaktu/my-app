@@ -48,6 +48,16 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
   const auth = useAuthContext();
   const user = useUserContext();
 
+  // While the auth provider is performing its initial Supabase session check,
+  // avoid rendering the app UI to prevent flicker between login/dashboard.
+  if (auth?.initializing) {
+    return (
+      <div className="h-screen w-full bg-[#0A0A0C] flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-[#00F2FF20] border-t-[#00F2FF] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   // App readiness: wait for auth to finish and, if a session exists,
   // for user onboarding to be initialized. This stricter gate prevents
   // briefly showing the login view while session/onboarding restore is in-flight.

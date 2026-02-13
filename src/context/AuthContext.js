@@ -25,6 +25,10 @@ export const AuthProvider = ({ children }) => {
   const [hasAssignedTeacher, setHasAssignedTeacher] = useState(null);
   // Whether the lower-level Supabase auth state is still being resolved
   const [authLoading, setAuthLoading] = useState(true);
+  // Expose a high-level initializing flag so consumers can wait until
+  // the first Supabase session check completes (prevents UI flicker)
+  const [user, setUser] = useState(null);
+  const [initializing, setInitializing] = useState(true);
 
   // Initialize auth from useAuth hook and restore session into context
   const handleSessionRestored = useCallback(({ sessionUser, role, setLoading }) => {
@@ -57,10 +61,12 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data } = await supabase.auth.getSession();
         const session = data?.session || null;
-        // We don't directly mutate the auth hook's state here; the hook will
-        // reconcile with Supabase via its own getSession/onAuthStateChange.
+        if (!mounted) return;
+        setUser(session?.user ?? null);
       } catch (e) {
         // ignore
+      } finally {
+        if (mounted) setInitializing(false);
       }
     };
 
@@ -68,7 +74,10 @@ export const AuthProvider = ({ children }) => {
 
     const { subscription } = supabase.auth.onAuthStateChange((event, payload) => {
       if (!mounted) return;
+      const session = payload?.session ?? null;
+      setUser(session?.user ?? null);
       // Any auth state change means the initial auth check is complete
+      setInitializing(false);
       setAuthLoading(false);
     });
 
@@ -219,6 +228,9 @@ export const AuthProvider = ({ children }) => {
     userRole: auth.userRole,
     // Lower-level Supabase auth loading guard
     authLoading,
+    // High-level initializing flag and current user
+    user,
+    initializing,
   };
 
   return (

@@ -55,8 +55,10 @@ export const getStoredSelection = () => {
  */
 export const setStoredSelection = (sel) => {
   try {
+    const materialVal = sel?.material;
+    const materialId = materialVal && typeof materialVal === 'object' ? materialVal.id : (typeof materialVal === 'number' || typeof materialVal === 'string' ? materialVal : null);
     const payload = {
-      materialId: sel?.material?.id || null,
+      materialId: materialId || null,
       level: sel?.level || null,
       lessonNumber: sel?.lessonNumber || null
     };

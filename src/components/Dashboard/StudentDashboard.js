@@ -64,9 +64,9 @@ export default function StudentDashboard() {
   const displayMaterial = currentMaterial || storedMaterial || null;
   const storedMaterialId = storedSelection?.material || null;
   const resolvedDisplayMaterial = displayMaterial || materials.find(m => m.id === storedMaterialId) || null;
-  const fallbackTitle = resolvedDisplayMaterial?.title || (storedMaterialId ? `Track ${storedMaterialId}` : 'Language Track');
-  const fallbackIcon = resolvedDisplayMaterial?.icon || 'book';
-  const fallbackColor = resolvedDisplayMaterial?.color || '#00F2FF';
+  const displayTitle = resolvedDisplayMaterial?.title || (storedMaterialId ? `Track ${storedMaterialId}` : 'Language Track');
+  const displayIcon = resolvedDisplayMaterial?.icon || 'book';
+  const displayColor = resolvedDisplayMaterial?.color || '#00F2FF';
 
   // Normalize current material id for comparisons (onboardingData.material may be an id or object)
   const currentMaterialId = resolvedDisplayMaterial?.id || (onboardingData?.material && (typeof onboardingData.material === 'object' ? onboardingData.material.id : onboardingData.material)) || storedMaterialId || null;
@@ -196,14 +196,23 @@ export default function StudentDashboard() {
       <div className="mb-10">
           <h4 className="text-[10px] font-black uppercase tracking-widest text-[#00F2FF] mb-4">My Current Track</h4>
           {/* Always show student's track card (use fallbacks if DB/onboarding not yet loaded) */}
-          <Card className="border-[#00F2FF40] bg-[#00F2FF05] animate-in fade-in" onClick={() => { setSelection({ material: onboardingData.material || storedSelection?.material, level: onboardingData.level || '' }); setView('select_lesson'); }}>
+          <Card 
+            className="border-[#00F2FF40] bg-[#00F2FF05] animate-in fade-in" 
+            onClick={() => { 
+              setSelection({ 
+                material: resolvedDisplayMaterial || onboardingData.material || storedSelection?.material, 
+                level: onboardingData.level || '' 
+              }); 
+              setView('select_lesson'); 
+            }}
+          >
             <div className="flex items-center gap-5">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-[#00F2FF20] border border-[#00F2FF40]">
-                          <Icon name={resolvedDisplayMaterial?.icon || fallbackIcon} style={{ color: resolvedDisplayMaterial?.color || fallbackColor }} />
+                          <Icon name={displayIcon} style={{ color: displayColor }} />
                         </div>
                               <div className="flex-1">
-                                <h3 className="font-bold text-lg text-white">{fallbackTitle}</h3>
-                                <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData?.level || ''}</p>
+                                <h3 className="font-bold text-lg text-white">{displayTitle}</h3>
+                                <p className="text-[#00F2FF] text-xs font-bold uppercase">{onboardingData?.level || 'Select Level'}</p>
                               </div>
                 <div className="px-4 py-2 bg-[#00F2FF] text-[#0A0A0C] rounded-lg font-bold text-xs uppercase">{streakState.completedHistory.length === 0 ? 'Start' : 'Continue'}</div>
             </div>
