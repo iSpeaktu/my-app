@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     try {
       const stored = getStoredView();
-      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen_lessons','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
       if (stored && typeof stored === 'string' && allowedViews.has(stored)) {
         // Only set if we are still on the initial default view
         _setView(prev => (prev === 'login' ? stored : prev));
@@ -146,7 +146,7 @@ export const AuthProvider = ({ children }) => {
   // Normalize any invalid view values (defensive guard against transient undefined values)
   useEffect(() => {
     try {
-      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen_lessons','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
       if (typeof view !== 'string' || !allowedViews.has(view)) {
         // If the view is invalid/undefined, pick a safe default based on session
         const safe = auth.session ? (auth.userRole === 'teacher' ? 'tutor_dashboard' : 'dashboard') : 'login';
@@ -162,7 +162,7 @@ export const AuthProvider = ({ children }) => {
   // Provide a stable, safe setView wrapper so consumers always get a callable function
   const setView = useCallback((next) => {
     try {
-      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen_lessons','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
       if (typeof next === 'string' && allowedViews.has(next)) {
         if (typeof _setView === 'function') _setView(next);
         else console.warn('Attempted to call setView but internal setter is not a function');
@@ -177,7 +177,7 @@ export const AuthProvider = ({ children }) => {
   // Persist view changes to localStorage so reloads restore the same view
   useEffect(() => {
     try {
-      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
+      const allowedViews = new Set(['login','signup','tutor_login','tutor_signup','reset','ob_screen1','ob_screen2','ob_screen_lessons','ob_screen3','dashboard','progress','select_level','select_lesson','quiz','results','settings','tutor_dashboard']);
       if (typeof view === 'string' && allowedViews.has(view)) setStoredView(view);
     } catch (e) {}
   }, [view]);

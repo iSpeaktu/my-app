@@ -14,13 +14,13 @@ export default function ObScreen3() {
   const { setView } = auth;
   const { onboardingData, setOnboardingData } = user;
   return (
-  <div className="max-w-md mx-auto min-h-[80vh] flex flex-col items-center justify-center px-8 animate-in slide-in-from-right-10">
-    <h2 className="text-2xl font-bold mb-10 text-center">What's your level?</h2>
+  <div className="max-w-md mx-auto py-10 px-8 animate-in slide-in-from-right-10">
+    <h2 className="text-2xl font-bold mb-6 text-center">What's your level?</h2>
     {onboardingData.material?.levels.map(l => (
       <button
         key={l}
         onClick={async () => {
-          const finalOb = { ...onboardingData, level: l };
+          const finalOb = { ...onboardingData, level: l, lessonsPerWeek: onboardingData.lessonsPerWeek };
           setOnboardingData(finalOb);
           // Persist final onboarding selections to students table
           try {
@@ -29,7 +29,7 @@ export default function ObScreen3() {
               await updateStudentData(userId, {
                 current_lesson_track_id: finalOb.material?.id || null,
                 current_level: finalOb.level || null,
-                lessons_per_week: finalOb.lessonsPerWeek || null
+                lessons_per_week: (typeof finalOb.lessonsPerWeek === 'number') ? finalOb.lessonsPerWeek : null
               });
             }
           } catch (err) {

@@ -52,7 +52,7 @@ async function run() {
     console.log('Teacher created:', teacherUser.id);
 
     // Upsert profile and teachers row
-    await admin.from('profiles').upsert([{ id: teacherUser.id, full_name: 'E2E Teacher', role: 'teacher', email: teacherEmail }], { onConflict: 'id' });
+    await admin.from('profiles').upsert([{ id: teacherUser.id, display_name: 'E2E Teacher', role: 'teacher', email: teacherEmail }], { onConflict: 'id' });
     await admin.from('teachers').upsert([{ id: teacherUser.id, display_name: 'E2E Teacher' }], { onConflict: 'id' });
 
     console.log('Creating teacher invite token...');
@@ -75,7 +75,7 @@ async function run() {
     console.log('Student created:', studentUser.id);
 
     // Upsert student profile and student row
-    await admin.from('profiles').upsert([{ id: studentUser.id, full_name: 'E2E Student', role: 'student', email: studentEmail }], { onConflict: 'id' });
+    await admin.from('profiles').upsert([{ id: studentUser.id, display_name: 'E2E Student', role: 'student', email: studentEmail }], { onConflict: 'id' });
     await admin.from('students').upsert([{ id: studentUser.id, xp: 0, weekly_streak: 0, lessons_per_week: 3 }], { onConflict: 'id' });
 
     // Simulate accept invite: as admin we can assign directly

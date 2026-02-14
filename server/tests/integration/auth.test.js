@@ -36,7 +36,7 @@ describe('Auth protection', () => {
     userId = created.id;
 
     // Ensure a profiles row exists for FK constraints
-    await supabase.from('profiles').upsert([{ id: userId, full_name: 'ITest User', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+    await supabase.from('profiles').upsert([{ id: userId, display_name: 'ITest User', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
 
     // Sign in via supabase-js to get token
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -54,7 +54,7 @@ describe('Auth protection', () => {
     const createdT = await createT.json();
     teacherId = createdT.id;
     // ensure profiles and teachers rows using admin client
-    await adminSupabase.from('profiles').upsert([{ id: teacherId, full_name: 'ITest Teacher', role: 'teacher' }], { onConflict: 'id', returning: 'minimal' });
+    await adminSupabase.from('profiles').upsert([{ id: teacherId, display_name: 'ITest Teacher', role: 'teacher' }], { onConflict: 'id', returning: 'minimal' });
     // try to upsert teachers row; ignore if table doesn't exist
     try {
       await adminSupabase.from('teachers').upsert([{ id: teacherId, display_name: 'ITest T' }], { onConflict: 'id', returning: 'minimal' });
@@ -154,7 +154,7 @@ describe('Auth protection', () => {
     expect(createRes2.ok).toBe(true);
     secondUserId = created2.id;
     // ensure profile exists
-    await supabase.from('profiles').upsert([{ id: secondUserId, full_name: 'Other', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+    await supabase.from('profiles').upsert([{ id: secondUserId, display_name: 'Other', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
 
     // Attempt to create notification claiming the second user as sender
     const badRes = await request(app)
@@ -236,7 +236,7 @@ describe('Auth protection', () => {
     expect(createOther.ok).toBe(true);
     const otherId = createdOther.id;
     // ensure profile exists
-    await supabase.from('profiles').upsert([{ id: otherId, full_name: 'Other Roster', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+    await supabase.from('profiles').upsert([{ id: otherId, display_name: 'Other Roster', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
     const { data: otherSign, error: otherErr } = await supabase.auth.signInWithPassword({ email: emailOther, password: passOther });
     if (otherErr) throw otherErr;
     const otherToken = otherSign?.session?.access_token || otherSign?.access_token;
@@ -272,7 +272,7 @@ describe('Auth protection', () => {
     });
     const createdOther = await createOther.json();
     const otherId = createdOther.id;
-    await adminSupabase.from('profiles').upsert([{ id: otherId, full_name: 'Other', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+    await adminSupabase.from('profiles').upsert([{ id: otherId, display_name: 'Other', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
     const { data: otherSign, error: otherErr } = await supabase.auth.signInWithPassword({ email: emailOther, password: passOther });
     const otherToken = otherSign?.session?.access_token || otherSign?.access_token;
 

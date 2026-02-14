@@ -11,7 +11,7 @@ export default function SettingsView() {
   const user = useUserContext();
 
   const [name, setName] = useState(auth.displayName || auth.userName || '');
-  const [lessonsPerWeek, setLessonsPerWeek] = useState(user.onboardingData?.lessonsPerWeek || 3);
+  const [lessonsPerWeek, setLessonsPerWeek] = useState(user.onboardingData?.lessonsPerWeek ?? 0);
   const [selectedMaterialId, setSelectedMaterialId] = useState(user.onboardingData?.material?.id || null);
   const { materials: dbMaterials } = useMaterials();
   const materials = dbMaterials || [];
@@ -66,7 +66,7 @@ export default function SettingsView() {
         const { data: sessionData } = await supabase.auth.getSession();
         const userId = sessionData?.session?.user?.id;
         if (userId) {
-          await supabase.from('profiles').upsert([{ id: userId, full_name: name || null }], { onConflict: 'id' });
+          await supabase.from('profiles').upsert([{ id: userId, display_name: name || null }], { onConflict: 'id' });
           await updateStudentData((auth.userName || '').toLowerCase(), { current_lesson_track_id: materialSpec.id, current_level: selectedLevel, lessons_per_week: lessonsPerWeek });
         }
       } catch (e) {
@@ -102,7 +102,7 @@ export default function SettingsView() {
 
   const handleReset = () => {
     setName(auth.displayName || auth.userName || '');
-    setLessonsPerWeek(user.onboardingData?.lessonsPerWeek || 3);
+    setLessonsPerWeek(user.onboardingData?.lessonsPerWeek ?? 0);
     setSelectedMaterialId(user.onboardingData?.material?.id || (materials[0] && materials[0].id));
     setSelectedLevel(user.onboardingData?.level || (materials[0]?.levels?.[0]));
     setMessage('');

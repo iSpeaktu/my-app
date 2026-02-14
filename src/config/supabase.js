@@ -60,7 +60,7 @@ const ensureTeacherProfile = async (user, displayName) => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const { error } = await supabase
         .from('profiles')
-        .upsert([{ id: userId, full_name: display || null, role: 'teacher' }], { onConflict: 'id', returning: 'minimal' });
+        .upsert([{ id: userId, display_name: display || null, role: 'teacher' }], { onConflict: 'id', returning: 'minimal' });
       if (!error) {
         profileError = null;
         break;
@@ -109,7 +109,7 @@ export const studentLogin = async (studentName) => {
 
     const { data: existingProfile, error: fetchError } = await supabase
       .from('profiles')
-      .select('id, username, full_name, role')
+      .select('id, username, display_name, role')
       .eq('username', normalizedName)
       .maybeSingle();
 
@@ -164,9 +164,9 @@ export const getAllStudents = async () => {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    // Prefer a human-friendly display name when available
+    // Prefer a human-friendly display name when available (students.display_name, profiles.display_name, username, email)
     return (students || []).map(s => {
-      const display = s.full_name || s.username || (s.email ? s.email.split('@')[0] : '');
+      const display = s.display_name || s.username || (s.email ? s.email.split('@')[0] : '');
       return { ...s, name: display };
     });
   } catch (error) {
@@ -185,7 +185,7 @@ export const updateStudentData = async (studentName, updates) => {
     const { data: profileMatch, error: profileErr } = await supabase
       .from('profiles')
       .select('id')
-      .or(`username.eq.${normalized},full_name.eq.${normalized}`)
+      .or(`username.eq.${normalized},display_name.eq.${normalized}`)
       .maybeSingle();
     if (profileErr) throw profileErr;
 
@@ -253,7 +253,7 @@ export const studentAuthSignUp = async (email, password, fullName) => {
       email,
       password,
       options: {
-        data: { role: 'student', full_name: fullName || null }
+        data: { role: 'student', display_name: fullName || null }
       }
     });
     if (error) throw error;
@@ -263,7 +263,7 @@ export const studentAuthSignUp = async (email, password, fullName) => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const { error } = await supabase
           .from('profiles')
-          .upsert([{ id: userId, full_name: fullName || null, role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+          .upsert([{ id: userId, display_name: fullName || null, role: 'student' }], { onConflict: 'id', returning: 'minimal' });
         if (!error) {
           profileError = null;
           break;
@@ -283,7 +283,7 @@ export const studentAuthSignUp = async (email, password, fullName) => {
         const { error } = await supabase
           .from('students')
           .insert([
-            { id: userId, xp: 0, weekly_streak: 0, lessons_per_week: 3 }
+            { id: userId, xp: 0, weekly_streak: 0, lessons_per_week: 3, display_name: fullName || null }
           ], { returning: 'minimal' });
         if (!error) {
           lastError = null;
@@ -312,8 +312,8 @@ export const findStudentEmailByUsername = async (identifier) => {
     if (!normalized) return null;
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, username, full_name, email')
-      .or(`username.eq.${normalized},full_name.eq.${normalized}`)
+      .select('id, username, display_name, email')
+      .or(`username.eq.${normalized},display_name.eq.${normalized}`)
       .maybeSingle();
 
     if (error) throw error;
@@ -410,7 +410,7 @@ export const getTeacherRoster = async () => {
 
     const { data: profiles, error: profilesErr } = await supabase
       .from('profiles')
-      .select('id, username, full_name, avatar_url')
+      .select('id, username, display_name, avatar_url')
       .in('id', studentIds);
     if (profilesErr) throw profilesErr;
 
@@ -486,7 +486,7 @@ export const getTeacherRoster = async () => {
         };
       });
       const last = history.length ? history[history.length - 1] : null;
-      const display = profile.full_name || profile.username || 'Student';
+      const display = profile.display_name || profile.username || 'Student';
       return {
         id,
         name: display,
@@ -569,15 +569,15 @@ export const getStudentHistoryForTeacher = async (studentId) => {
 export const getTeacherNameByUserId = async (teacherUserId) => {
   try {
     if (!teacherUserId) return null;
-    // Prefer the canonical name stored on profiles.full_name; fall back to teachers.display_name
+    // Prefer the canonical name stored on profiles.display_name; fall back to teachers.display_name
     const { data: profile, error: profileErr } = await supabase
       .from('profiles')
-      .select('full_name')
+      .select('display_name')
       .eq('id', teacherUserId)
       .maybeSingle();
     if (profileErr) throw profileErr;
-    if (profile?.full_name) {
-      return profile.full_name;
+    if (profile?.display_name) {
+      return profile.display_name;
     }
 
     const { data, error } = await supabase
@@ -600,7 +600,7 @@ export const teacherAuthSignUp = async (email, password, displayName) => {
       email,
       password,
       options: {
-        data: { role: 'teacher', full_name: displayName || null }
+        data: { role: 'teacher', display_name: displayName || null }
       }
     });
     if (error) throw error;

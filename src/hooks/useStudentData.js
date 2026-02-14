@@ -27,7 +27,7 @@ export const useStudentData = (view, selection) => {
   const [onboardingData, setOnboardingData] = useState({
     material: null,
     level: null,
-    lessonsPerWeek: 3
+    lessonsPerWeek: null
   });
 
   const [streakState, setStreakState] = useState({
@@ -81,7 +81,7 @@ export const useStudentData = (view, selection) => {
 
     // --- NORMALIZE USERNAME ---
     const rawDisplayName =
-      profile?.full_name ||
+      profile?.display_name ||
       sessionUser.user_metadata?.full_name ||
       sessionUser.user_metadata?.display_name ||
       profile?.username ||
@@ -98,7 +98,7 @@ export const useStudentData = (view, selection) => {
       try {
         await upsertProfile(userId, {
           username: normalized || null,
-          full_name: sessionUser.user_metadata?.full_name || null,
+          display_name: sessionUser.user_metadata?.full_name || null,
           role: sessionUser.user_metadata?.role || 'student'
         });
       } catch (err) {
@@ -114,25 +114,26 @@ export const useStudentData = (view, selection) => {
       try {
         await supabase
           .from('students')
-          .upsert([{ id: userId }], { onConflict: 'id', returning: 'minimal' });
+          .upsert([{ id: userId, display_name: rawDisplayName || null }], { onConflict: 'id', returning: 'minimal' });
       } catch (err) {
         console.error('Failed to create student row:', err);
       }
     }
 
     // --- RESOLVE MATERIAL AND LEVEL FROM DATABASE ---
-     const rawMaterialId = student?.current_lesson_track_id || null;
-     // Prefer DB-sourced onboarding; no in-memory MATERIALS_DATA mapping available here.
-     const materialFromDb = null;
+    const rawMaterialId = student?.current_lesson_track_id || null;
+    // Prefer DB-sourced onboarding: expose the raw material id so the UI
+    // can resolve it against the client-side `materials` list.
+    const materialFromDb = rawMaterialId || null;
     const levelFromDb = student?.current_level || null;
     const material = materialFromDb || onboardingData.material || null;
     const level = levelFromDb || onboardingData.level || null;
     const nextOnboarding = {
       material,
       level,
-      lessonsPerWeek: typeof student?.lessons_per_week === 'number'
+      lessonsPerWeek: (typeof student?.lessons_per_week === 'number')
         ? student.lessons_per_week
-        : (onboardingData.lessonsPerWeek || 3)
+        : (typeof onboardingData.lessonsPerWeek === 'number' ? onboardingData.lessonsPerWeek : null)
     };
     setOnboardingData(nextOnboarding);
 
@@ -147,6 +148,12 @@ export const useStudentData = (view, selection) => {
       failures: h.failures || []
     }));
 
+    // Determine the student's last attempted lesson (if any) so we can
+    // return it to the caller for UI rehydration (do not persist here).
+    const lastLessonFromHistory = (completedHistory && completedHistory.length > 0)
+      ? completedHistory[completedHistory.length - 1].lessonId
+      : null;
+
     // --- CALCULATE WEEKLY STREAK AND ACTIVITY ---
     const now = new Date();
     const currentWeekStart = new Date(calculateWeekStart(now));
@@ -157,9 +164,9 @@ export const useStudentData = (view, selection) => {
     const lastWeekStart = new Date(calculateWeekStart(lastActivityDate));
     const isSameWeek = lastWeekStart.getTime() === currentWeekStart.getTime();
 
-    const target = typeof student?.lessons_per_week === 'number'
+    const target = (typeof student?.lessons_per_week === 'number')
       ? student.lessons_per_week
-      : (onboardingData.lessonsPerWeek || 3);
+      : (typeof onboardingData.lessonsPerWeek === 'number' ? onboardingData.lessonsPerWeek : 0);
     const prevWeekStart = new Date(currentWeekStart);
     prevWeekStart.setDate(prevWeekStart.getDate() - 7);
     const prevWeekEnd = new Date(currentWeekStart);
@@ -224,7 +231,7 @@ export const useStudentData = (view, selection) => {
       setHasAssignedTeacher(false);
     }
 
-    return { material, level, hasStudent, hasProfile, teacherName: teacherNameLocal, hasAssignedTeacher: hasAssignedTeacherLocal, lessonsPerWeek: nextOnboarding.lessonsPerWeek, streakState: { weeklyStreak, weeklyActivityCount, lastResetDate: currentWeekStart.toISOString(), completedHistory, xp: xpFromStudent, perfectStreak: perfectFromStudent }, notifications: notifications || [], achievements: achievements || [] };
+    return { material, level, hasStudent, hasProfile, teacherName: teacherNameLocal, hasAssignedTeacher: hasAssignedTeacherLocal, lessonsPerWeek: nextOnboarding.lessonsPerWeek, lastLesson: lastLessonFromHistory, streakState: { weeklyStreak, weeklyActivityCount, lastResetDate: currentWeekStart.toISOString(), completedHistory, xp: xpFromStudent, perfectStreak: perfectFromStudent }, notifications: notifications || [], achievements: achievements || [] };
   };
 
   return {

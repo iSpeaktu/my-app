@@ -250,7 +250,7 @@ export const usePersistentAuth = () => {
 
     const profileUpdates = {};
     if (updates.userName) profileUpdates.username = updates.userName;
-    if (updates.displayName) profileUpdates.full_name = updates.displayName;
+    if (updates.displayName) profileUpdates.display_name = updates.displayName;
     if (updates.role) profileUpdates.role = updates.role;
     // Optional: application-level settings/preferences stored as JSON
     // Expected schema: profiles.settings should be a JSON/JSONB column.

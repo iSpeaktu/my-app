@@ -11,6 +11,7 @@ import ResetView from './components/Auth/ResetView';
 import ObScreen1 from './components/Onboarding/ObScreen1';
 import ObScreen2 from './components/Onboarding/ObScreen2';
 import ObScreen3 from './components/Onboarding/ObScreen3';
+import ObScreenLessonsPerWeek from './components/Onboarding/ObScreenLessonsPerWeek';
 import StudentDashboard from './components/Dashboard/StudentDashboard';
 import ProgressView from './components/Dashboard/ProgressView';
 import SelectionPathView from './components/SelectionPathView';
@@ -168,6 +169,7 @@ function AppContent({ inviteToken, inviteTeacherNameProp, isFetchingTeacher, sho
       {appReady && auth.view === 'reset' && <ResetView />}
       {appReady && auth.view === 'ob_screen1' && <ObScreen1 />}
       {appReady && auth.view === 'ob_screen2' && <ObScreen2 />}
+      {appReady && auth.view === 'ob_screen_lessons' && <ObScreenLessonsPerWeek />}
       {appReady && auth.view === 'ob_screen3' && <ObScreen3 />}
       {appReady && auth.view === 'dashboard' && (
         <ErrorBoundary>

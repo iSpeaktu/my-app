@@ -22,7 +22,7 @@ exports.getRoster = async (req, res) => {
     const studentIds = (students || []).map(s => s.id).filter(Boolean);
     let profiles = [];
     if (studentIds.length > 0) {
-      const { data: pData, error: profErr } = await adminSupabase.from('profiles').select('id, full_name, email, avatar_url').in('id', studentIds);
+      const { data: pData, error: profErr } = await adminSupabase.from('profiles').select('id, display_name, email, avatar_url').in('id', studentIds);
       if (profErr) {
         console.error('getRoster profiles fetch error', profErr);
       } else {
@@ -35,7 +35,7 @@ exports.getRoster = async (req, res) => {
       const prof = (profiles || []).find(p => p.id === s.id) || {};
       return {
         id: s.id,
-        full_name: prof.full_name || null,
+        display_name: prof.display_name || null,
         email: prof.email || null,
         avatar_url: prof.avatar_url || null,
         xp: s.xp || 0,

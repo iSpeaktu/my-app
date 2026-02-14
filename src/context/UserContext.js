@@ -22,7 +22,7 @@ export const UserProvider = ({ children }) => {
   const [onboardingData, setOnboardingData] = useState({
     material: storedSelection?.material || null,
     level: storedSelection?.level || null,
-    lessonsPerWeek: 3
+    lessonsPerWeek: null
   });
 
   // Weekly streak and activity tracking (original lines 199-205)
@@ -61,7 +61,7 @@ export const UserProvider = ({ children }) => {
           // Mark initialization in-progress so setter wrappers avoid persisting
           initRef.current = true;
 
-          const { material, level, teacherName, hasAssignedTeacher, lessonsPerWeek, streakState: restoredStreakState, notifications: restoredNotifications, achievements: restoredAchievements } = await loadStudentData(
+          const { material, level, teacherName, hasAssignedTeacher, lessonsPerWeek, lastLesson, streakState: restoredStreakState, notifications: restoredNotifications, achievements: restoredAchievements } = await loadStudentData(
             auth.session.user,
             auth.userName,
             auth.setUserName,
@@ -70,8 +70,8 @@ export const UserProvider = ({ children }) => {
           );
           if (!mounted) return;
           if (material || level || lessonsPerWeek) {
-            setOnboardingData(prev => ({ ...prev, material: material || prev.material, level: level || prev.level, lessonsPerWeek: lessonsPerWeek || prev.lessonsPerWeek }));
-            try { setSelectionWrapped({ material, level, lessonNumber: null }); } catch (e) {}
+            setOnboardingData(prev => ({ ...prev, material: material || prev.material, level: level || prev.level, lessonsPerWeek: lessonsPerWeek ?? prev.lessonsPerWeek }));
+            try { setSelectionWrapped({ material, level, lessonNumber: lastLesson }); } catch (e) {}
           }
           if (restoredStreakState) {
             setStreakState(restoredStreakState);
@@ -158,7 +158,7 @@ export const UserProvider = ({ children }) => {
   useEffect(() => {
     try {
       if (hasInitializedOnboarding && onboardingData && onboardingData.material) {
-        setStoredSelection({ material: onboardingData.material, level: onboardingData.level, lessonNumber: null });
+        setStoredSelection({ material: onboardingData.material, level: onboardingData.level, lessonNumber: selection?.lessonNumber || null });
       }
     } catch (e) {}
   }, [hasInitializedOnboarding, onboardingData]);

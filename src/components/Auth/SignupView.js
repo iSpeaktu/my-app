@@ -163,7 +163,7 @@ export default function SignupView() {
               auth.setUserName(normalized);
               auth.setDisplayName(fullName || normalized);
 
-              const baseOnboarding = { material: null, level: null, lessonsPerWeek: user.onboardingData?.lessonsPerWeek || 3 };
+              const baseOnboarding = { material: null, level: null, lessonsPerWeek: user.onboardingData?.lessonsPerWeek ?? null };
               user.setOnboardingData(baseOnboarding);
               setView('ob_screen1');
             } catch (err) {

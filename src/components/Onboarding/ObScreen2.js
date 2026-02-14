@@ -35,7 +35,7 @@ export default function ObScreen2() {
             } catch (err) {
               console.error('Failed to persist selected track on onboarding step:', err);
             }
-            setView('ob_screen3');
+            setView('ob_screen_lessons');
           }}
         aria-label={`Select ${m.title} as your study track`}
         className="w-full p-5 bg-[#16161D] border border-[#2D2D3A] rounded-2xl mb-3 flex items-center gap-4 hover:border-[#00F2FF] focus:outline-none focus:ring-2 focus:ring-[#00F2FF] focus:ring-offset-2 focus:ring-offset-[#0A0A0C] transition-all"

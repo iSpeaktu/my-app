@@ -1,4 +1,4 @@
-const { adminSupabase } = require('../supabaseClient');
+const { supabase, adminSupabase } = require('../supabaseClient');
 
 // Helper to compute XP for all lessons for a student (simple first-pass algorithm)
 function computeTotalXPFromHistory(history) {

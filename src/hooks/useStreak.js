@@ -44,7 +44,7 @@ export const useStreak = (streakState, setStreakState, onboardingData, selection
     const lastWeekStart = streakState.lastResetDate ? new Date(streakState.lastResetDate) : currentWeekStart;
     const isSameWeek = lastWeekStart.getTime() === currentWeekStart.getTime();
 
-    const target = onboardingData.lessonsPerWeek || 3;
+    const target = typeof onboardingData.lessonsPerWeek === 'number' ? onboardingData.lessonsPerWeek : 0;
 
     // Update weekly activity count
     let weeklyActivityCount = streakState.weeklyActivityCount;

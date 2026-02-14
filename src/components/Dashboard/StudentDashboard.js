@@ -137,7 +137,7 @@ export default function StudentDashboard() {
   const praise = (studentNotifications || []).find(n => n.type === 'praise') || null;
 
 
-  const weeklyTarget = onboardingData?.lessonsPerWeek || 3;
+  const weeklyTarget = onboardingData?.lessonsPerWeek ?? 0;
   // Compute weekly progress from unique lessons completed in the last 7 days
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recentUniqueLessons = (() => {
@@ -154,7 +154,7 @@ export default function StudentDashboard() {
       return 0;
     }
   })();
-  const progressPerc = Math.min(100, (recentUniqueLessons || 0) / weeklyTarget * 100);
+  const progressPerc = weeklyTarget > 0 ? Math.min(100, (recentUniqueLessons || 0) / weeklyTarget * 100) : 0;
 
   const dismissPraise = async (e) => {
       e.stopPropagation();

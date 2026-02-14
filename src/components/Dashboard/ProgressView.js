@@ -44,7 +44,7 @@ export default function ProgressView({
   const user = useUserContext();
 
   const streakState = propsStreakState || user.streakState || { completedHistory: [], weeklyActivityCount: 0 };
-  const onboardingData = propsOnboardingData || user.onboardingData || { lessonsPerWeek: 3 };
+  const onboardingData = propsOnboardingData || user.onboardingData || { lessonsPerWeek: 0 };
   const studentTeacherName = propsStudentTeacherName || auth.studentTeacherName || '';
   const setStudentTeacherName = propsSetStudentTeacherName || auth.setStudentTeacherName || (() => {});
   const studentAchievements = propsStudentAchievements || user.studentAchievements || [];
