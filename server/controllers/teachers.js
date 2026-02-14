@@ -2,6 +2,7 @@
 
 const { adminSupabase } = require('../supabaseClient');
 const crypto = require('crypto');
+const { generateUniqueInviteToken } = require('../utils/invite');
 
 exports.getRoster = async (req, res) => {
   const teacherId = req.params.teacherId;
@@ -58,8 +59,8 @@ exports.createInvite = async (req, res) => {
   try {
     // Only a teacher or owner may reach this route (enforced by route middleware)
 
-    // Generate a short token
-    const token = crypto.randomBytes(8).toString('hex');
+    // Generate a short, human-friendly unique token (checked against invites table)
+    const token = await generateUniqueInviteToken(adminSupabase, { length: 8, maxAttempts: 10 });
 
     const payload = {
       teacher_id: teacherId,
