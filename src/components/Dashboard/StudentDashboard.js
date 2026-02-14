@@ -78,27 +78,27 @@ export default function StudentDashboard() {
   useEffect(() => {
     let mounted = true;
     let hideTimer = null;
-    // safety absolute timeout (10s)
+    // safety absolute timeout (0.5s)
     const absoluteTimer = setTimeout(() => {
       if (mounted) {
         setShowLoader(false);
         if (hideTimer) clearTimeout(hideTimer);
       }
-    }, 10000);
+    }, 500);
 
     const checkReady = () => {
       return (materials && materials.length > 0) || !!onboardingData?.material || !!storedSelection?.material;
     };
 
     if (checkReady()) {
-      // DB already ready on mount — keep loader for 10 more seconds
-      hideTimer = setTimeout(() => { if (mounted) setShowLoader(false); }, 10000);
+      // DB already ready on mount — keep loader for a short moment
+      hideTimer = setTimeout(() => { if (mounted) setShowLoader(false); }, 500);
     } else {
       // Watch for readiness changes by polling a few times via micro-interval
       const interval = setInterval(() => {
         if (checkReady()) {
           clearInterval(interval);
-          hideTimer = setTimeout(() => { if (mounted) setShowLoader(false); }, 10000);
+          hideTimer = setTimeout(() => { if (mounted) setShowLoader(false); }, 500);
         }
       }, 250);
       // clear interval on unmount
