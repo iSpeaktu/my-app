@@ -132,19 +132,6 @@ export default function StudentDashboard() {
     }
   };
 
-  const sendPraise = async () => {
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData?.session?.user?.id;
-      if (!userId) return;
-      const created = await createNotification(userId, 'praise', userId, null);
-      if (created && created.id) {
-        setStudentNotifications(prev => [created, ...(prev || [])]);
-      }
-    } catch (err) {
-      console.error('sendPraise failed', err);
-    }
-  };
 
   const reminder = (studentNotifications || []).find(n => n.type === 'reminder') || null;
   const praise = (studentNotifications || []).find(n => n.type === 'praise') || null;
@@ -196,9 +183,7 @@ export default function StudentDashboard() {
   return (
     <div className="max-w-xl mx-auto py-8 px-6 animate-in slide-in-from-bottom-8">
       <Header title={`Hello, ${displayName || userName}`} subtitle="Your learning dashboard" showStreak streakState={streakState} onLogout={handleLogout} />
-      <div className="flex justify-end mb-4">
-        <button onClick={sendPraise} className="px-3 py-1 bg-[#00FF94] text-black rounded-md text-sm font-bold">Send Praise</button>
-      </div>
+      
       
       <div className="mb-8">
           <div className="flex justify-between items-end mb-2 text-[10px] font-bold uppercase tracking-widest text-white/60">

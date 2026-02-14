@@ -25,6 +25,27 @@ export default function QuizResultsView({ quizState, setView }) {
         if (user?.recordActivity && quizState?.history?.length > 0) {
           const failures = missed.map(m => m.question);
           await user.recordActivity(passed, percentage, failures);
+
+          // If student passed, advance to the next lesson in the current selection.
+          try {
+            if (passed && typeof user.setSelection === 'function') {
+              const current = user.selection || {};
+              const curLesson = current.lessonNumber;
+              let nextLesson = null;
+              if (typeof curLesson === 'string') {
+                const m = curLesson.match(/^lesson-(\d+)$/i);
+                if (m) nextLesson = `lesson-${String(Number(m[1]) + 1)}`;
+                else if (!Number.isNaN(Number(curLesson))) nextLesson = String(Number(curLesson) + 1);
+              } else if (typeof curLesson === 'number') {
+                nextLesson = curLesson + 1;
+              }
+              if (nextLesson !== null) {
+                user.setSelection({ ...current, lessonNumber: nextLesson });
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to advance to next lesson:', e);
+          }
         }
       } catch (err) {
         console.error('Failed to record quiz completion:', err);
