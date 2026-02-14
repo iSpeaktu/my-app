@@ -4,7 +4,50 @@ const { adminSupabase } = require('../supabaseClient');
 const crypto = require('crypto');
 
 exports.getRoster = async (req, res) => {
-  return res.json({ success: true, students: [] });
+  const teacherId = req.params.teacherId;
+  if (!teacherId) return res.status(400).json({ success: false, error: 'teacherId required' });
+  try {
+    // Fetch students assigned to this teacher
+    const { data: students, error: studentsErr } = await adminSupabase
+      .from('students')
+      .select('id, xp, perfect_streak, created_at')
+      .eq('teacher_id', teacherId)
+      .order('created_at', { ascending: true });
+    if (studentsErr) {
+      console.error('getRoster students fetch error', studentsErr);
+      return res.status(500).json({ success: false, error: studentsErr.message || 'Failed to fetch students' });
+    }
+
+    const studentIds = (students || []).map(s => s.id).filter(Boolean);
+    let profiles = [];
+    if (studentIds.length > 0) {
+      const { data: pData, error: profErr } = await adminSupabase.from('profiles').select('id, full_name, email, avatar_url').in('id', studentIds);
+      if (profErr) {
+        console.error('getRoster profiles fetch error', profErr);
+      } else {
+        profiles = pData || [];
+      }
+    }
+
+    // Merge student rows with profiles
+    const roster = (students || []).map(s => {
+      const prof = (profiles || []).find(p => p.id === s.id) || {};
+      return {
+        id: s.id,
+        full_name: prof.full_name || null,
+        email: prof.email || null,
+        avatar_url: prof.avatar_url || null,
+        xp: s.xp || 0,
+        perfect_streak: s.perfect_streak || 0,
+        joined_at: s.created_at || null
+      };
+    });
+
+    return res.json({ success: true, roster });
+  } catch (err) {
+    console.error('getRoster error', err);
+    return res.status(500).json({ success: false, error: err.message || 'Failed to fetch roster' });
+  }
 };
 
 // POST /teachers/:teacherId/invite

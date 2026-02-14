@@ -211,6 +211,45 @@ describe('Auth protection', () => {
     expect(studentRow.teacher_id).toBe(teacherFromInvite);
   });
 
+  test('GET teacher roster returns assigned students for teacher', async () => {
+    const res = await request(app)
+      .get(`/api/teachers/${teacherId}/roster`)
+      .set('Authorization', `Bearer ${teacherToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('success', true);
+    const ids = (res.body.roster || []).map(r => r.id);
+    expect(ids).toContain(userId);
+  });
+
+  test('Unauthorized student cannot view another teacher roster (403)', async () => {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // create a fresh student not assigned to the teacher
+    const emailOther = `roster-other-${Date.now()}@example.com`;
+    const passOther = 'OtherPass123!';
+    const createOther = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      body: JSON.stringify({ email: emailOther, password: passOther, email_confirm: true, user_metadata: { role: 'student' } }),
+    });
+    const createdOther = await createOther.json();
+    expect(createOther.ok).toBe(true);
+    const otherId = createdOther.id;
+    // ensure profile exists
+    await supabase.from('profiles').upsert([{ id: otherId, full_name: 'Other Roster', role: 'student' }], { onConflict: 'id', returning: 'minimal' });
+    const { data: otherSign, error: otherErr } = await supabase.auth.signInWithPassword({ email: emailOther, password: passOther });
+    if (otherErr) throw otherErr;
+    const otherToken = otherSign?.session?.access_token || otherSign?.access_token;
+
+    const res = await request(app)
+      .get(`/api/teachers/${teacherId}/roster`)
+      .set('Authorization', `Bearer ${otherToken}`);
+    expect(res.status).toBe(403);
+
+    // cleanup
+    await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${otherId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } });
+  });
+
   test('Student can post lesson history and XP updates, and other students forbidden', async () => {
     // Post history as the student (userId)
     const res = await request(app)
